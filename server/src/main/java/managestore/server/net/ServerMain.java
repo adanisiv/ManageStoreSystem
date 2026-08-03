@@ -31,7 +31,7 @@ public class ServerMain {
         EmployeeRepository employeeRepository = new JsonFileEmployeeRepository(dataDir.resolve("employees.json"));
         AccountRepository accountRepository = new JsonFileAccountRepository(dataDir.resolve("accounts.json"));
         AuthService authService = new AuthService(accountRepository, employeeRepository);
-        ServerContext context = new ServerContext(new StoreChain(), authService, new Gson());
+        ServerContext context = new ServerContext(new StoreChain(), authService, employeeRepository, new Gson());
 
         try (ServerSocket serverSocket = bind(port)) {
             ExecutorService clientPool = Executors.newCachedThreadPool();

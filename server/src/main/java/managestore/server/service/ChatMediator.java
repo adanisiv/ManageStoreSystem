@@ -1,6 +1,8 @@
 package managestore.server.service;
 
 import managestore.common.model.Employee;
+import managestore.common.model.LogEvent;
+import managestore.common.model.LogType;
 import managestore.common.protocol.ChatEndNotice;
 import managestore.common.protocol.ChatFreeNotice;
 import managestore.common.protocol.ChatMessageDto;
@@ -103,6 +105,7 @@ public class ChatMediator {
         if (session == null) {
             return;
         }
+        session.appendToTranscript(sessionEmployeeNumber, text);
         ChatMessageDto messageDto = new ChatMessageDto(session.getId(), sessionEmployeeNumber, text);
         for (String participant : session.getParticipantEmployeeNumbers()) {
             if (!participant.equals(sessionEmployeeNumber)) {
@@ -127,6 +130,8 @@ public class ChatMediator {
             busyEmployeeNumbers.remove(participant);
             send(participant, MessageType.CHAT_END, new ChatEndNotice(session.getId()));
         }
+        LogManager.getInstance().log(new LogEvent(LogType.CHAT, String.join(", ", participants),
+                "Chat session " + session.getId() + " ended. Transcript: " + String.join(" | ", session.getTranscript())));
         for (String freedParticipant : participants) {
             notifyIfQueuedRequestWaiting(freedParticipant);
         }

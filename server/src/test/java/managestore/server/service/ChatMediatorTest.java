@@ -24,6 +24,9 @@ class ChatMediatorTest {
 
     @BeforeEach
     void setUp() {
+        // ChatMediator logs session-end events into the LogManager singleton, which other test
+        // classes also write to — clear it so unrelated events from other tests can't leak in.
+        LogManager.getInstance().clear();
         mediator = new ChatMediator();
         sellerA = new RecordingChatEndpoint();
         sellerB = new RecordingChatEndpoint();

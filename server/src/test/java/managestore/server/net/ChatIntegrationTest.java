@@ -57,7 +57,7 @@ class ChatIntegrationTest {
                 new Employee("CB", "Chat Employee B", "2", "050-2", "ACC-2", "BRANCH-B", Role.SELLER),
                 "chatEmpB", "secret123");
 
-        ServerContext context = new ServerContext(storeChain, authService, gson);
+        ServerContext context = new ServerContext(storeChain, authService, employeeRepository, gson);
         ServerSocket serverSocket = ServerMain.bind(0);
         int port = serverSocket.getLocalPort();
         ExecutorService clientPool = Executors.newCachedThreadPool();

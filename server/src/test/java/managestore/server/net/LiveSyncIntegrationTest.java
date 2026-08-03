@@ -73,7 +73,7 @@ class LiveSyncIntegrationTest {
                 new Employee("E3", "Newbie Customer", "333333333", "050-3", "N/A", "N/A", Role.ADMIN),
                 "bystanderC", "secret123");
 
-        ServerContext context = new ServerContext(storeChain, authService, gson);
+        ServerContext context = new ServerContext(storeChain, authService, employeeRepository, gson);
         ServerSocket serverSocket = ServerMain.bind(0);
         int port = serverSocket.getLocalPort();
         ExecutorService clientPool = Executors.newCachedThreadPool();

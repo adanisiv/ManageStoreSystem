@@ -13,6 +13,7 @@ class ChatSession {
 
     private final String id = UUID.randomUUID().toString();
     private final List<String> participantEmployeeNumbers = new CopyOnWriteArrayList<>();
+    private final List<String> transcript = new CopyOnWriteArrayList<>();
 
     String getId() {
         return id;
@@ -20,6 +21,15 @@ class ChatSession {
 
     List<String> getParticipantEmployeeNumbers() {
         return participantEmployeeNumbers;
+    }
+
+    /** Optional saved chat content (brief: "option to save the chat content" in the system log). */
+    List<String> getTranscript() {
+        return transcript;
+    }
+
+    void appendToTranscript(String fromEmployeeNumber, String text) {
+        transcript.add(fromEmployeeNumber + ": " + text);
     }
 
     void addParticipant(String employeeNumber) {

@@ -7,6 +7,8 @@ import managestore.common.model.CustomerFactory;
 import managestore.common.model.CustomerType;
 import managestore.common.model.Employee;
 import managestore.common.model.InventoryObserver;
+import managestore.common.model.LogEvent;
+import managestore.common.model.LogType;
 import managestore.common.model.Product;
 import managestore.common.model.PurchaseResult;
 import managestore.common.model.Role;
@@ -18,9 +20,15 @@ import managestore.common.protocol.CustomerAddRequest;
 import managestore.common.protocol.CustomerDto;
 import managestore.common.protocol.CustomerListResponse;
 import managestore.common.protocol.CustomerUpdateNotice;
+import managestore.common.protocol.EmployeeAddRequest;
+import managestore.common.protocol.EmployeeAddResponse;
+import managestore.common.protocol.EmployeeListResponse;
 import managestore.common.protocol.ErrorMessage;
 import managestore.common.protocol.InventorySnapshotResponse;
 import managestore.common.protocol.InventoryUpdateNotice;
+import managestore.common.protocol.LogEventDto;
+import managestore.common.protocol.LogListRequest;
+import managestore.common.protocol.LogListResponse;
 import managestore.common.protocol.LoginRequest;
 import managestore.common.protocol.LoginResponse;
 import managestore.common.protocol.Message;
@@ -32,6 +40,7 @@ import managestore.common.protocol.ReportRequest;
 import managestore.common.protocol.ReportResponse;
 import managestore.common.protocol.StockEntry;
 import managestore.server.service.ChatEndpoint;
+import managestore.server.service.LogManager;
 import managestore.server.service.SessionManager;
 
 import java.io.IOException;
@@ -128,6 +137,15 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 break;
             case REPORT_REQUEST:
                 handleReportRequest(message);
+                break;
+            case EMPLOYEE_LIST_REQUEST:
+                handleEmployeeListRequest();
+                break;
+            case EMPLOYEE_ADD_REQUEST:
+                handleEmployeeAddRequest(message);
+                break;
+            case LOG_LIST_REQUEST:
+                handleLogListRequest(message);
                 break;
             default:
                 sendError("Unhandled message type: " + message.getType());
@@ -249,6 +267,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             PurchaseResult result = context.getPurchaseService()
                     .purchase(subscribedBranch, product, request.getQuantity(), customer);
             context.getSalesRecordRepository().add(new SalesRecord(subscribedBranch.getId(), result));
+            LogManager.getInstance().log(new LogEvent(LogType.SALE, loggedInEmployee.getEmployeeNumber(),
+                    "Sold " + request.getQuantity() + "x " + product.getSku() + " to " + customer.getPersonalId()
+                            + " for " + result.getAmountCharged()));
             int newQuantity = subscribedBranch.getInventory().getQuantity(product);
             channel.send(Message.of(context.getGson(), MessageType.PURCHASE_RESPONSE,
                     PurchaseResponse.success(result.getListTotal(), result.getAmountCharged(), newQuantity)));
@@ -280,6 +301,8 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             CustomerType type = CustomerType.valueOf(request.getCustomerType());
             Customer customer = CustomerFactory.create(type, request.getPersonalId(), request.getFullName(), request.getPhone());
             context.getStoreChain().getCustomerDirectory().add(customer);
+            LogManager.getInstance().log(new LogEvent(LogType.CUSTOMER_REGISTERED, loggedInEmployee.getEmployeeNumber(),
+                    "Registered " + type + " customer " + customer.getPersonalId() + " (" + customer.getFullName() + ")"));
         } catch (IllegalArgumentException e) {
             sendError("Could not add customer: " + e.getMessage());
         }
@@ -291,6 +314,70 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
         channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_UPDATE_BROADCAST,
                 new CustomerUpdateNotice(CustomerDto.from(customer), newlyAdded)));
+    }
+
+    // ---- employees ----------------------------------------------------------
+
+    private void handleEmployeeListRequest() {
+        if (!requireLogin()) {
+            return;
+        }
+        channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_LIST_RESPONSE,
+                new EmployeeListResponse(context.getEmployeeRepository().findAll())));
+    }
+
+    /** Admin-only: matches the brief's "Admin screen defines employee accounts". */
+    private void handleEmployeeAddRequest(Message message) {
+        if (!requireLogin()) {
+            return;
+        }
+        if (loggedInEmployee.getRole() != Role.ADMIN) {
+            channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_ADD_RESPONSE,
+                    EmployeeAddResponse.failure("Only an admin can add employees")));
+            return;
+        }
+        EmployeeAddRequest request = message.readPayload(context.getGson(), EmployeeAddRequest.class);
+        try {
+            Role role = Role.valueOf(request.getRole());
+            Employee employee = new Employee(request.getEmployeeNumber(), request.getFullName(), request.getPersonalId(),
+                    request.getPhone(), request.getAccountNumber(), request.getBranchId(), role);
+            context.getAuthService().createAccount(employee, request.getUsername(), request.getPassword());
+
+            Branch branch = context.getStoreChain().getBranch(request.getBranchId());
+            if (branch != null) {
+                branch.addEmployee(employee);
+            }
+            LogManager.getInstance().log(new LogEvent(LogType.EMPLOYEE_REGISTERED, loggedInEmployee.getEmployeeNumber(),
+                    "Registered employee " + employee.getEmployeeNumber() + " (" + employee.getFullName() + ", " + role + ")"));
+            channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_ADD_RESPONSE, EmployeeAddResponse.success()));
+        } catch (IllegalArgumentException e) {
+            channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_ADD_RESPONSE,
+                    EmployeeAddResponse.failure(e.getMessage())));
+        }
+    }
+
+    // ---- logs ----------------------------------------------------------
+
+    /** Admin-only: logs can contain chat transcripts and other sensitive detail. */
+    private void handleLogListRequest(Message message) {
+        if (!requireLogin()) {
+            return;
+        }
+        if (loggedInEmployee.getRole() != Role.ADMIN) {
+            sendError("Only an admin can view the system log");
+            return;
+        }
+        LogListRequest request = message.readPayload(context.getGson(), LogListRequest.class);
+        List<LogEvent> events = request.getTypeFilter() != null
+                ? LogManager.getInstance().byType(LogType.valueOf(request.getTypeFilter()))
+                : LogManager.getInstance().all();
+
+        List<LogEventDto> dtos = new ArrayList<>();
+        for (LogEvent event : events) {
+            dtos.add(new LogEventDto(event.getType().name(), event.getActor(), event.getDetails(),
+                    event.getTimestamp().toEpochMilli()));
+        }
+        channel.send(Message.of(context.getGson(), MessageType.LOG_LIST_RESPONSE, new LogListResponse(dtos)));
     }
 
     // ---- reports ----------------------------------------------------------

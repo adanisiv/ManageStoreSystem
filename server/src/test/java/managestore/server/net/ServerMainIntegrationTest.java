@@ -49,7 +49,7 @@ class ServerMainIntegrationTest {
         Employee employee = new Employee("E1", "Dana Cohen", "123456789", "050-1111111", "ACC-1", "BRANCH-1", Role.CASHIER);
         authService.createAccount(employee, USERNAME, "secret123");
 
-        ServerContext context = new ServerContext(new StoreChain(), authService, gson);
+        ServerContext context = new ServerContext(new StoreChain(), authService, employeeRepository, gson);
         ServerSocket serverSocket = ServerMain.bind(0);
         int port = serverSocket.getLocalPort();
         ExecutorService clientPool = Executors.newCachedThreadPool();

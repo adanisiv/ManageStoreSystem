@@ -1,0 +1,41 @@
+package managestore.common.protocol;
+
+/**
+ * Every message that can cross the client-server socket. The wire format is
+ * one JSON {@link Message} object per line: {@code {"type": ..., "payload": ...}}.
+ */
+public enum MessageType {
+    LOGIN_REQUEST,
+    LOGIN_RESPONSE,
+    LOGOUT,
+
+    INVENTORY_SNAPSHOT_REQUEST,
+    INVENTORY_SNAPSHOT_RESPONSE,
+    INVENTORY_UPDATE,
+    PURCHASE_REQUEST,
+    PURCHASE_RESPONSE,
+
+    CUSTOMER_LIST_REQUEST,
+    CUSTOMER_LIST_RESPONSE,
+    CUSTOMER_ADD_REQUEST,
+    CUSTOMER_UPDATE_BROADCAST,
+
+    EMPLOYEE_LIST_REQUEST,
+    EMPLOYEE_LIST_RESPONSE,
+    EMPLOYEE_ADD_REQUEST,
+
+    REPORT_REQUEST,
+    REPORT_RESPONSE,
+
+    CHAT_REQUEST,
+    CHAT_STARTED,
+    CHAT_QUEUED,
+    CHAT_FREE_NOTICE,
+    CHAT_MESSAGE,
+    CHAT_END,
+    CHAT_JOIN_REQUEST,
+
+    LOG_EVENT,
+
+    ERROR
+}

@@ -9,6 +9,10 @@ import managestore.common.model.Employee;
 import managestore.common.model.InventoryObserver;
 import managestore.common.model.Product;
 import managestore.common.model.PurchaseResult;
+import managestore.common.model.Role;
+import managestore.common.protocol.ChatJoinRequest;
+import managestore.common.protocol.ChatMessageDto;
+import managestore.common.protocol.ChatRequestDto;
 import managestore.common.protocol.CustomerAddRequest;
 import managestore.common.protocol.CustomerDto;
 import managestore.common.protocol.CustomerListResponse;
@@ -24,6 +28,7 @@ import managestore.common.protocol.MessageType;
 import managestore.common.protocol.PurchaseRequest;
 import managestore.common.protocol.PurchaseResponse;
 import managestore.common.protocol.StockEntry;
+import managestore.server.service.ChatEndpoint;
 import managestore.server.service.SessionManager;
 
 import java.io.IOException;
@@ -46,7 +51,7 @@ import java.util.logging.Logger;
  * registered the same way, so one client's change is pushed to all of them
  * automatically the moment it happens, with no polling.
  */
-public class ClientHandler implements Runnable {
+public class ClientHandler implements Runnable, ChatEndpoint {
 
     private static final Logger LOG = Logger.getLogger(ClientHandler.class.getName());
 
@@ -106,6 +111,18 @@ public class ClientHandler implements Runnable {
             case CUSTOMER_ADD_REQUEST:
                 handleCustomerAddRequest(message);
                 break;
+            case CHAT_REQUEST:
+                handleChatRequest(message);
+                break;
+            case CHAT_MESSAGE:
+                handleChatMessage(message);
+                break;
+            case CHAT_END:
+                handleChatEnd();
+                break;
+            case CHAT_JOIN_REQUEST:
+                handleChatJoinRequest(message);
+                break;
             default:
                 sendError("Unhandled message type: " + message.getType());
         }
@@ -152,9 +169,13 @@ public class ClientHandler implements Runnable {
             }
         };
         context.getStoreChain().getCustomerDirectory().addObserver(customerDirectoryObserver);
+        context.getChatMediator().register(loggedInEmployee, this);
     }
 
     private void cleanupOnDisconnect() {
+        if (loggedInEmployee != null) {
+            context.getChatMediator().unregister(loggedInEmployee.getEmployeeNumber());
+        }
         if (loggedInUsername != null) {
             SessionManager.getInstance().logout(loggedInUsername);
             loggedInUsername = null;
@@ -263,6 +284,56 @@ public class ClientHandler implements Runnable {
         }
         channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_UPDATE_BROADCAST,
                 new CustomerUpdateNotice(CustomerDto.from(customer), newlyAdded)));
+    }
+
+    // ---- chat ----------------------------------------------------------
+
+    private void handleChatRequest(Message message) {
+        if (!requireLogin()) {
+            return;
+        }
+        ChatRequestDto request = message.readPayload(context.getGson(), ChatRequestDto.class);
+        String myNumber = loggedInEmployee.getEmployeeNumber();
+        if (request.getTargetEmployeeNumber() != null) {
+            context.getChatMediator().requestDirectChat(myNumber, request.getTargetEmployeeNumber());
+        } else {
+            context.getChatMediator().requestChat(myNumber, request.getTargetBranchId());
+        }
+    }
+
+    private void handleChatMessage(Message message) {
+        if (!requireLogin()) {
+            return;
+        }
+        ChatMessageDto request = message.readPayload(context.getGson(), ChatMessageDto.class);
+        context.getChatMediator().sendMessage(loggedInEmployee.getEmployeeNumber(), request.getText());
+    }
+
+    private void handleChatEnd() {
+        if (!requireLogin()) {
+            return;
+        }
+        context.getChatMediator().endChat(loggedInEmployee.getEmployeeNumber());
+    }
+
+    private void handleChatJoinRequest(Message message) {
+        if (!requireLogin()) {
+            return;
+        }
+        if (loggedInEmployee.getRole() != Role.SHIFT_MANAGER) {
+            sendError("Only a shift manager can join an existing chat");
+            return;
+        }
+        ChatJoinRequest request = message.readPayload(context.getGson(), ChatJoinRequest.class);
+        context.getChatMediator().joinChat(loggedInEmployee.getEmployeeNumber(), request.getTargetEmployeeNumber());
+    }
+
+    /** {@link ChatEndpoint} implementation: how ChatMediator pushes chat messages to this specific client. */
+    @Override
+    public void send(MessageType type, Object payload) {
+        if (channel != null) {
+            channel.send(Message.of(context.getGson(), type, payload));
+        }
     }
 
     // ---- helpers ----------------------------------------------------------

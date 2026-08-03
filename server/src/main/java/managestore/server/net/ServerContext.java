@@ -2,9 +2,12 @@ package managestore.server.net;
 
 import com.google.gson.Gson;
 import managestore.common.model.StoreChain;
+import managestore.server.repository.SalesRecordRepository;
+import managestore.server.report.WordReportExporter;
 import managestore.server.service.AuthService;
 import managestore.server.service.ChatMediator;
 import managestore.server.service.PurchaseService;
+import managestore.server.service.ReportService;
 
 /** Shared state every {@link ClientHandler} thread needs a reference to. */
 public class ServerContext {
@@ -13,12 +16,15 @@ public class ServerContext {
     private final AuthService authService;
     private final PurchaseService purchaseService = new PurchaseService();
     private final ChatMediator chatMediator = new ChatMediator();
+    private final SalesRecordRepository salesRecordRepository = new SalesRecordRepository();
+    private final ReportService reportService;
     private final Gson gson;
 
     public ServerContext(StoreChain storeChain, AuthService authService, Gson gson) {
         this.storeChain = storeChain;
         this.authService = authService;
         this.gson = gson;
+        this.reportService = new ReportService(storeChain, new WordReportExporter());
     }
 
     public StoreChain getStoreChain() {
@@ -35,6 +41,14 @@ public class ServerContext {
 
     public ChatMediator getChatMediator() {
         return chatMediator;
+    }
+
+    public SalesRecordRepository getSalesRecordRepository() {
+        return salesRecordRepository;
+    }
+
+    public ReportService getReportService() {
+        return reportService;
     }
 
     public Gson getGson() {

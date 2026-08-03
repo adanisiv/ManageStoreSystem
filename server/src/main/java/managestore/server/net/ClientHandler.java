@@ -10,6 +10,7 @@ import managestore.common.model.InventoryObserver;
 import managestore.common.model.Product;
 import managestore.common.model.PurchaseResult;
 import managestore.common.model.Role;
+import managestore.common.model.SalesRecord;
 import managestore.common.protocol.ChatJoinRequest;
 import managestore.common.protocol.ChatMessageDto;
 import managestore.common.protocol.ChatRequestDto;
@@ -27,6 +28,8 @@ import managestore.common.protocol.MessageChannel;
 import managestore.common.protocol.MessageType;
 import managestore.common.protocol.PurchaseRequest;
 import managestore.common.protocol.PurchaseResponse;
+import managestore.common.protocol.ReportRequest;
+import managestore.common.protocol.ReportResponse;
 import managestore.common.protocol.StockEntry;
 import managestore.server.service.ChatEndpoint;
 import managestore.server.service.SessionManager;
@@ -122,6 +125,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 break;
             case CHAT_JOIN_REQUEST:
                 handleChatJoinRequest(message);
+                break;
+            case REPORT_REQUEST:
+                handleReportRequest(message);
                 break;
             default:
                 sendError("Unhandled message type: " + message.getType());
@@ -242,6 +248,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         try {
             PurchaseResult result = context.getPurchaseService()
                     .purchase(subscribedBranch, product, request.getQuantity(), customer);
+            context.getSalesRecordRepository().add(new SalesRecord(subscribedBranch.getId(), result));
             int newQuantity = subscribedBranch.getInventory().getQuantity(product);
             channel.send(Message.of(context.getGson(), MessageType.PURCHASE_RESPONSE,
                     PurchaseResponse.success(result.getListTotal(), result.getAmountCharged(), newQuantity)));
@@ -284,6 +291,18 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
         channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_UPDATE_BROADCAST,
                 new CustomerUpdateNotice(CustomerDto.from(customer), newlyAdded)));
+    }
+
+    // ---- reports ----------------------------------------------------------
+
+    private void handleReportRequest(Message message) {
+        if (!requireLogin()) {
+            return;
+        }
+        ReportRequest request = message.readPayload(context.getGson(), ReportRequest.class);
+        ReportResponse response = context.getReportService().generate(
+                context.getSalesRecordRepository().all(), request.getScope(), request.getFilterValue(), request.getFormat());
+        channel.send(Message.of(context.getGson(), MessageType.REPORT_RESPONSE, response));
     }
 
     // ---- chat ----------------------------------------------------------

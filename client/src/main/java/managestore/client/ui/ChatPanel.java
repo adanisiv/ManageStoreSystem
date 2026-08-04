@@ -1,0 +1,130 @@
+package managestore.client.ui;
+
+import javafx.geometry.Insets;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import managestore.client.net.ServerConnection;
+import managestore.common.model.Employee;
+import managestore.common.model.Role;
+import managestore.common.protocol.ChatEndNotice;
+import managestore.common.protocol.ChatFreeNotice;
+import managestore.common.protocol.ChatJoinRequest;
+import managestore.common.protocol.ChatMessageDto;
+import managestore.common.protocol.ChatQueuedNotice;
+import managestore.common.protocol.ChatRequestDto;
+import managestore.common.protocol.ChatStartedNotice;
+import managestore.common.protocol.MessageType;
+
+/**
+ * Cross-branch chat. Server-side this is entirely driven by ChatMediator
+ * (Mediator pattern + a per-branch queue) — this panel just reflects
+ * whatever state that mediator pushes: queued, started, a callback notice
+ * once someone frees up, messages, and end.
+ */
+public class ChatPanel {
+
+    private final ServerConnection connection;
+    private final Employee employee;
+    private String activeSessionId;
+
+    public ChatPanel(ServerConnection connection, Employee employee) {
+        this.connection = connection;
+        this.employee = employee;
+    }
+
+    public BorderPane build() {
+        TextField targetBranchField = new TextField();
+        targetBranchField.setPromptText("Target branch ID");
+        Button requestButton = new Button("Request Chat");
+        Label statusLabel = new Label("Not in a chat.");
+
+        TextArea transcript = new TextArea();
+        transcript.setEditable(false);
+        TextField messageField = new TextField();
+        messageField.setPromptText("Type a message...");
+        Button sendButton = new Button("Send");
+        Button endButton = new Button("End Chat");
+        sendButton.setDisable(true);
+        endButton.setDisable(true);
+
+        TextField joinTargetField = new TextField();
+        joinTargetField.setPromptText("Employee # to join their chat");
+        Button joinButton = new Button("Join as Shift Manager");
+
+        requestButton.setOnAction(e -> connection.send(MessageType.CHAT_REQUEST,
+                new ChatRequestDto(targetBranchField.getText().trim())));
+
+        sendButton.setOnAction(e -> {
+            if (activeSessionId != null && !messageField.getText().trim().isEmpty()) {
+                connection.send(MessageType.CHAT_MESSAGE,
+                        new ChatMessageDto(activeSessionId, employee.getEmployeeNumber(), messageField.getText().trim()));
+                transcript.appendText("Me: " + messageField.getText().trim() + "\n");
+                messageField.clear();
+            }
+        });
+
+        endButton.setOnAction(e -> connection.send(MessageType.CHAT_END, new ChatEndNotice(activeSessionId)));
+
+        joinButton.setOnAction(e -> connection.send(MessageType.CHAT_JOIN_REQUEST,
+                new ChatJoinRequest(joinTargetField.getText().trim())));
+
+        connection.on(MessageType.CHAT_QUEUED, message -> {
+            ChatQueuedNotice notice = message.readPayload(connection.getGson(), ChatQueuedNotice.class);
+            statusLabel.setText("Nobody free at " + notice.getTargetBranchId() + " right now — waiting in queue.");
+        });
+
+        connection.on(MessageType.CHAT_STARTED, message -> {
+            ChatStartedNotice notice = message.readPayload(connection.getGson(), ChatStartedNotice.class);
+            activeSessionId = notice.getSessionId();
+            statusLabel.setText("Chat active with: " + String.join(", ", notice.getParticipantEmployeeNumbers()));
+            transcript.clear();
+            sendButton.setDisable(false);
+            endButton.setDisable(false);
+        });
+
+        connection.on(MessageType.CHAT_FREE_NOTICE, message -> {
+            ChatFreeNotice notice = message.readPayload(connection.getGson(), ChatFreeNotice.class);
+            statusLabel.setText(notice.getFromEmployeeName() + " tried to reach you while you were busy.");
+            Button callBackButton = new Button("Call back " + notice.getFromEmployeeName());
+            callBackButton.setOnAction(e -> connection.send(MessageType.CHAT_REQUEST,
+                    new ChatRequestDto(null, notice.getFromEmployeeNumber())));
+            statusLabel.setGraphic(callBackButton);
+        });
+
+        connection.on(MessageType.CHAT_MESSAGE, message -> {
+            ChatMessageDto dto = message.readPayload(connection.getGson(), ChatMessageDto.class);
+            transcript.appendText(dto.getFromEmployeeNumber() + ": " + dto.getText() + "\n");
+        });
+
+        connection.on(MessageType.CHAT_END, message -> {
+            activeSessionId = null;
+            statusLabel.setText("Chat ended.");
+            statusLabel.setGraphic(null);
+            sendButton.setDisable(true);
+            endButton.setDisable(true);
+        });
+
+        HBox requestBar = new HBox(8, targetBranchField, requestButton, statusLabel);
+        requestBar.setPadding(new Insets(8));
+        HBox sendBar = new HBox(8, messageField, sendButton, endButton);
+        sendBar.setPadding(new Insets(8));
+
+        VBox top = new VBox(requestBar);
+        if (employee.getRole() == Role.SHIFT_MANAGER) {
+            HBox joinBar = new HBox(8, joinTargetField, joinButton);
+            joinBar.setPadding(new Insets(8));
+            top.getChildren().add(joinBar);
+        }
+
+        BorderPane pane = new BorderPane();
+        pane.setTop(top);
+        pane.setCenter(transcript);
+        pane.setBottom(sendBar);
+        return pane;
+    }
+}

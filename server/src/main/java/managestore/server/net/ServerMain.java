@@ -2,6 +2,7 @@ package managestore.server.net;
 
 import com.google.gson.Gson;
 import managestore.common.model.StoreChain;
+import managestore.common.protocol.NetworkDefaults;
 import managestore.server.repository.AccountRepository;
 import managestore.server.repository.EmployeeRepository;
 import managestore.server.repository.JsonFileAccountRepository;
@@ -22,10 +23,9 @@ import java.util.logging.Logger;
 public class ServerMain {
 
     private static final Logger LOG = Logger.getLogger(ServerMain.class.getName());
-    public static final int DEFAULT_PORT = 5050;
 
     public static void main(String[] args) throws IOException {
-        int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
+        int port = args.length > 0 ? Integer.parseInt(args[0]) : NetworkDefaults.DEFAULT_PORT;
         Path dataDir = Paths.get("data");
 
         EmployeeRepository employeeRepository = new JsonFileEmployeeRepository(dataDir.resolve("employees.json"));

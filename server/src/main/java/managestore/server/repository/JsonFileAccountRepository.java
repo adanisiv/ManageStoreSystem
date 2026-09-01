@@ -12,6 +12,7 @@ import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,14 +49,17 @@ public class JsonFileAccountRepository implements AccountRepository {
         }
     }
 
+    /** Same crash-safe write-then-atomic-rename approach as {@link JsonFileEmployeeRepository#persist()}. */
     private synchronized void persist() {
         try {
             if (file.getParent() != null) {
                 Files.createDirectories(file.getParent());
             }
-            try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+            try (Writer writer = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
                 gson.toJson(new java.util.ArrayList<>(byUsername.values()), LIST_TYPE, writer);
             }
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to save " + file, e);
         }

@@ -94,12 +94,29 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             this.channel = opened;
             Message message;
             while ((message = opened.receive()) != null) {
-                dispatch(message);
+                dispatchSafely(message);
             }
         } catch (IOException e) {
             LOG.log(Level.FINE, "Connection closed: " + e.getMessage());
         } finally {
             cleanupOnDisconnect();
+        }
+    }
+
+    /**
+     * Runs {@link #dispatch} guarded against any unexpected {@link RuntimeException}
+     * (a malformed payload, an invalid enum value in a request, a bug in a handler)
+     * so that one bad message reports an error back to this client instead of
+     * silently killing their whole session — every other connected client is
+     * completely unaffected either way, since each has its own thread, but a
+     * client shouldn't lose their session over one bad request.
+     */
+    private void dispatchSafely(Message message) {
+        try {
+            dispatch(message);
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Error handling " + message.getType() + " from " + socket.getRemoteSocketAddress(), e);
+            sendError("Request failed: " + e.getMessage());
         }
     }
 

@@ -77,8 +77,10 @@ public class LoginScreen {
             }
         });
 
+        Scene scene = new Scene(grid, 380, 280);
+        scene.getStylesheets().add(getClass().getResource("/app.css").toExternalForm());
         stage.setTitle("ManageStoreSystem — Login");
-        stage.setScene(new Scene(grid, 380, 260));
+        stage.setScene(scene);
         stage.show();
     }
 

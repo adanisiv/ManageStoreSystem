@@ -1,0 +1,109 @@
+/*
+ * Minimal theme so the app doesn't look like bare default JavaFX (Modena).
+ * Loaded once per Scene from LoginScreen and MainWindow.
+ */
+
+.root {
+    -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: #f4f6f9;
+    -accent: #2f6fed;
+    -accent-dark: #1e4fbf;
+    -ink: #1f2937;
+    -muted: #6b7280;
+}
+
+.label {
+    -fx-text-fill: -ink;
+}
+
+.text-field, .password-field, .combo-box-base, .choice-box, .date-picker, .spinner {
+    -fx-background-color: white;
+    -fx-background-radius: 4px;
+    -fx-border-color: #d0d5dd;
+    -fx-border-radius: 4px;
+    -fx-padding: 4px 6px;
+}
+
+.text-field:focused, .password-field:focused, .combo-box-base:focused, .choice-box:focused, .date-picker:focused {
+    -fx-border-color: -accent;
+}
+
+.button {
+    -fx-background-color: -accent;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 4px;
+    -fx-padding: 6px 14px;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: -accent-dark;
+}
+
+.button:disabled {
+    -fx-background-color: #cbd2d9;
+    -fx-text-fill: #8a95a3;
+}
+
+.tab-pane .tab-header-area .tab-header-background {
+    -fx-background-color: white;
+}
+
+.tab {
+    -fx-background-color: #e9edf3;
+    -fx-padding: 8px 16px;
+}
+
+.tab:selected {
+    -fx-background-color: white;
+    -fx-border-color: -accent transparent transparent transparent;
+    -fx-border-width: 3px 0 0 0;
+}
+
+.tab .tab-label {
+    -fx-text-fill: -muted;
+    -fx-font-weight: bold;
+}
+
+.tab:selected .tab-label {
+    -fx-text-fill: -accent;
+}
+
+.table-view {
+    -fx-background-color: white;
+    -fx-border-color: #e5e7eb;
+    -fx-border-radius: 4px;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: #eef1f6;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: -ink;
+    -fx-font-weight: bold;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: #fafbfd;
+}
+
+.table-row-cell:selected {
+    -fx-background-color: derive(-accent, 80%);
+}
+
+.text-area {
+    -fx-background-color: white;
+    -fx-border-color: #e5e7eb;
+    -fx-border-radius: 4px;
+}
+
+#header-bar {
+    -fx-background-color: #1f2937;
+    -fx-padding: 12px 18px;
+    -fx-text-fill: white;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+}

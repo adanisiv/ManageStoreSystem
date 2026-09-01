@@ -29,7 +29,8 @@ public class MainWindow {
     public void show(Stage stage) {
         Label header = new Label(employee.getFullName() + "  •  " + employee.getRole()
                 + (employee.getBranchId() != null ? "  •  Branch " + employee.getBranchId() : ""));
-        header.setStyle("-fx-font-size: 14px; -fx-padding: 8;");
+        header.setId("header-bar");
+        header.setMaxWidth(Double.MAX_VALUE);
 
         TabPane tabs = new TabPane();
         tabs.getTabs().add(tab("Inventory", new InventoryPanel(connection).build()));
@@ -45,8 +46,10 @@ public class MainWindow {
         root.setTop(header);
         root.setCenter(tabs);
 
+        Scene scene = new Scene(root, 960, 640);
+        scene.getStylesheets().add(getClass().getResource("/app.css").toExternalForm());
         stage.setTitle("ManageStoreSystem — " + employee.getFullName());
-        stage.setScene(new Scene(root, 900, 600));
+        stage.setScene(scene);
         stage.show();
     }
 

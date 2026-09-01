@@ -50,12 +50,20 @@ public class CustomersPanel {
         typeChoice.getSelectionModel().selectFirst();
         Button addButton = new Button("Add Customer");
         Label statusLabel = new Label();
+        statusLabel.getStyleClass().add("status-label");
 
-        addButton.setOnAction(e -> connection.send(MessageType.CUSTOMER_ADD_REQUEST,
-                new CustomerAddRequest(idField.getText().trim(), nameField.getText().trim(),
-                        phoneField.getText().trim(), typeChoice.getValue())));
+        addButton.setOnAction(e -> {
+            String id = idField.getText().trim();
+            if (id.isEmpty() || nameField.getText().trim().isEmpty()) {
+                UiUtil.setStatus(statusLabel, false, "Personal ID and full name are required.");
+                return;
+            }
+            connection.send(MessageType.CUSTOMER_ADD_REQUEST,
+                    new CustomerAddRequest(id, nameField.getText().trim(), phoneField.getText().trim(), typeChoice.getValue()));
+        });
 
         HBox addBar = new HBox(8, idField, nameField, phoneField, typeChoice, addButton, statusLabel);
+        addBar.getStyleClass().add("toolbar");
         addBar.setPadding(new Insets(8));
 
         connection.on(MessageType.CUSTOMER_LIST_RESPONSE, message -> {
@@ -67,10 +75,19 @@ public class CustomersPanel {
             rows.setAll(byPersonalId.values());
         });
 
+        // No dedicated CUSTOMER_ADD_RESPONSE exists — a successful add is confirmed by this same
+        // network-wide broadcast every client (including the one who just added it) receives, so
+        // watch for the id we just submitted to give this specific form its own success feedback.
         connection.on(MessageType.CUSTOMER_UPDATE_BROADCAST, message -> {
             CustomerUpdateNotice notice = message.readPayload(connection.getGson(), CustomerUpdateNotice.class);
             byPersonalId.put(notice.getCustomer().getPersonalId(), notice.getCustomer());
             rows.setAll(byPersonalId.values());
+            if (notice.isNewlyAdded() && notice.getCustomer().getPersonalId().equals(idField.getText().trim())) {
+                UiUtil.setStatus(statusLabel, true, "Added " + notice.getCustomer().getFullName() + ".");
+                idField.clear();
+                nameField.clear();
+                phoneField.clear();
+            }
         });
 
         connection.send(MessageType.CUSTOMER_LIST_REQUEST, new Object());

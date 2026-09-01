@@ -36,4 +36,10 @@ public class StockEntry {
     public int getQuantity() {
         return quantity;
     }
+
+    /** Drives how this entry displays itself in a JavaFX ChoiceBox (product picker in InventoryPanel). */
+    @Override
+    public String toString() {
+        return name + " — " + sku + " (" + quantity + " in stock)";
+    }
 }

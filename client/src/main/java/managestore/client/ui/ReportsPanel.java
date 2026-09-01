@@ -47,7 +47,8 @@ public class ReportsPanel {
         ChoiceBox<ReportScope> scopeChoice = new ChoiceBox<>(FXCollections.observableArrayList(ReportScope.values()));
         scopeChoice.getSelectionModel().select(ReportScope.BRANCH);
         TextField filterField = new TextField();
-        filterField.setPromptText("Filter value (optional)");
+        filterField.setPromptText(filterHintFor(ReportScope.BRANCH));
+        scopeChoice.valueProperty().addListener((obs, oldScope, newScope) -> filterField.setPromptText(filterHintFor(newScope)));
         DatePicker dayPicker = new DatePicker();
         dayPicker.setPromptText("Day (optional)");
         ChoiceBox<ReportFormat> formatChoice = new ChoiceBox<>(FXCollections.observableArrayList(ReportFormat.values()));
@@ -55,8 +56,11 @@ public class ReportsPanel {
         Button generateButton = new Button("Generate");
         Button saveWordButton = new Button("Save as Word...");
         saveWordButton.setDisable(true);
+        saveWordButton.getStyleClass().add("secondary");
         Label titleLabel = new Label();
+        titleLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
         Label totalsLabel = new Label();
+        totalsLabel.setStyle("-fx-text-fill: -muted;");
 
         TableView<ReportLineDto> table = new TableView<>();
         table.getColumns().add(column("Label", "label"));
@@ -64,6 +68,7 @@ public class ReportsPanel {
         table.getColumns().add(column("Revenue", "revenue"));
 
         HBox controls = new HBox(8, scopeChoice, filterField, dayPicker, formatChoice, generateButton, saveWordButton);
+        controls.getStyleClass().add("toolbar");
         controls.setPadding(new Insets(8));
 
         generateButton.setOnAction(e -> {
@@ -103,11 +108,29 @@ public class ReportsPanel {
             }
         });
 
+        VBox summary = new VBox(4, titleLabel, totalsLabel);
+        summary.setPadding(new Insets(10, 8, 4, 8));
+
         BorderPane pane = new BorderPane();
         pane.setTop(controls);
         pane.setCenter(table);
-        pane.setBottom(new VBox(titleLabel, totalsLabel));
+        pane.setBottom(summary);
         return pane;
+    }
+
+    /** What the free-text filter field actually expects, which otherwise isn't obvious from "Filter value". */
+    private String filterHintFor(ReportScope scope) {
+        switch (scope) {
+            case BRANCH:
+                return "Branch ID, e.g. B1 (blank = all branches)";
+            case PRODUCT:
+                return "Product SKU, e.g. SKU-TSHIRT (blank = all products)";
+            case CATEGORY:
+                return "Category name, e.g. Tops (blank = all categories)";
+            case ALL:
+            default:
+                return "(no filter for ALL — grand total)";
+        }
     }
 
     private TableColumn<ReportLineDto, ?> column(String title, String property) {

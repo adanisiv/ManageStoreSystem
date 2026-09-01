@@ -1,5 +1,5 @@
 /*
- * Minimal theme so the app doesn't look like bare default JavaFX (Modena).
+ * Theme so the app doesn't look like bare default JavaFX (Modena).
  * Loaded once per Scene from LoginScreen and MainWindow.
  */
 
@@ -11,6 +11,8 @@
     -accent-dark: #1e4fbf;
     -ink: #1f2937;
     -muted: #6b7280;
+    -danger: #d92d20;
+    -success: #027a48;
 }
 
 .label {
@@ -19,66 +21,109 @@
 
 .text-field, .password-field, .combo-box-base, .choice-box, .date-picker, .spinner {
     -fx-background-color: white;
-    -fx-background-radius: 4px;
+    -fx-background-radius: 6px;
     -fx-border-color: #d0d5dd;
-    -fx-border-radius: 4px;
-    -fx-padding: 4px 6px;
+    -fx-border-radius: 6px;
+    -fx-padding: 6px 8px;
 }
 
 .text-field:focused, .password-field:focused, .combo-box-base:focused, .choice-box:focused, .date-picker:focused {
     -fx-border-color: -accent;
+    -fx-border-width: 1.5px;
 }
 
 .button {
     -fx-background-color: -accent;
     -fx-text-fill: white;
     -fx-font-weight: bold;
-    -fx-background-radius: 4px;
-    -fx-padding: 6px 14px;
+    -fx-background-radius: 6px;
+    -fx-padding: 7px 16px;
     -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(47,111,237,0.35), 6, 0, 0, 1);
 }
 
 .button:hover {
     -fx-background-color: -accent-dark;
 }
 
+.button:armed {
+    -fx-background-color: derive(-accent-dark, -10%);
+}
+
 .button:disabled {
     -fx-background-color: #cbd2d9;
     -fx-text-fill: #8a95a3;
+    -fx-effect: none;
+}
+
+/* Secondary action buttons (Save as Word, Join, End Chat) read less "primary" than Sell/Generate/Log In. */
+.button.secondary {
+    -fx-background-color: white;
+    -fx-text-fill: -accent;
+    -fx-border-color: -accent;
+    -fx-border-radius: 6px;
+    -fx-effect: none;
+}
+
+.button.secondary:hover {
+    -fx-background-color: derive(-accent, 92%);
+}
+
+.tab-pane {
+    -fx-tab-min-width: 110px;
 }
 
 .tab-pane .tab-header-area .tab-header-background {
     -fx-background-color: white;
 }
 
+.tab-pane .tab-header-area {
+    -fx-padding: 6px 8px 0 8px;
+}
+
 .tab {
-    -fx-background-color: #e9edf3;
-    -fx-padding: 8px 16px;
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 10px 18px;
 }
 
 .tab:selected {
-    -fx-background-color: white;
+    -fx-background-color: #eef2ff;
+    -fx-background-radius: 8px 8px 0 0;
     -fx-border-color: -accent transparent transparent transparent;
     -fx-border-width: 3px 0 0 0;
+    -fx-border-radius: 8px 8px 0 0;
 }
 
 .tab .tab-label {
     -fx-text-fill: -muted;
     -fx-font-weight: bold;
+    -fx-font-size: 13px;
 }
 
 .tab:selected .tab-label {
-    -fx-text-fill: -accent;
+    -fx-text-fill: -accent-dark;
+}
+
+.tab-pane .tab-content-area {
+    -fx-background-color: white;
 }
 
 .table-view {
     -fx-background-color: white;
     -fx-border-color: #e5e7eb;
-    -fx-border-radius: 4px;
+    -fx-border-radius: 6px;
+    -fx-padding: 0;
 }
 
 .table-view .column-header-background {
     -fx-background-color: #eef1f6;
+    -fx-background-radius: 6px 6px 0 0;
+}
+
+.table-view .column-header, .table-view .filler {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent #e5e7eb transparent transparent;
 }
 
 .table-view .column-header .label {
@@ -86,24 +131,86 @@
     -fx-font-weight: bold;
 }
 
+.table-row-cell {
+    -fx-cell-size: 30px;
+    -fx-border-color: transparent transparent #f0f2f5 transparent;
+}
+
 .table-row-cell:odd {
     -fx-background-color: #fafbfd;
 }
 
 .table-row-cell:selected {
-    -fx-background-color: derive(-accent, 80%);
+    -fx-background-color: derive(-accent, 85%);
+    -fx-table-cell-border-color: transparent;
 }
 
 .text-area {
     -fx-background-color: white;
     -fx-border-color: #e5e7eb;
-    -fx-border-radius: 4px;
+    -fx-border-radius: 6px;
+}
+
+.text-area .content {
+    -fx-background-color: white;
+    -fx-background-radius: 6px;
+}
+
+/* A horizontal action bar (filters + buttons above a table, sell/restock controls, etc.) —
+   gives every panel's "toolbar" row a consistent white card look instead of sitting bare on -fx-background-color. */
+.toolbar {
+    -fx-background-color: white;
+    -fx-border-color: #e5e7eb;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 12px;
+    -fx-alignment: center-left;
+}
+
+.status-label {
+    -fx-font-weight: bold;
+    -fx-padding: 4px 0 0 0;
+}
+
+.status-label.success {
+    -fx-text-fill: -success;
+}
+
+.status-label.error {
+    -fx-text-fill: -danger;
 }
 
 #header-bar {
-    -fx-background-color: #1f2937;
-    -fx-padding: 12px 18px;
+    -fx-background-color: linear-gradient(to right, #1f2937, #29344a);
+    -fx-padding: 14px 20px;
     -fx-text-fill: white;
     -fx-font-size: 15px;
     -fx-font-weight: bold;
+}
+
+/* Login screen: a centered white card over a colored backdrop, not a form floating on plain gray. */
+#login-backdrop {
+    -fx-background-color: linear-gradient(to bottom right, #1e4fbf, #1f2937);
+}
+
+#login-card {
+    -fx-background-color: white;
+    -fx-background-radius: 14px;
+    -fx-padding: 34px 40px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 24, 0, 0, 8);
+}
+
+#login-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ink;
+}
+
+#login-subtitle {
+    -fx-font-size: 12px;
+    -fx-text-fill: -muted;
+}
+
+#login-card .button {
+    -fx-pref-width: 300px;
 }

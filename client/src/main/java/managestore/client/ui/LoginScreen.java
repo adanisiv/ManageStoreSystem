@@ -9,6 +9,8 @@ import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import managestore.client.net.ServerConnection;
 import managestore.common.protocol.LoginRequest;
@@ -32,16 +34,17 @@ public class LoginScreen {
         TextField hostField = new TextField("localhost");
         TextField portField = new TextField(String.valueOf(defaultPort));
         TextField usernameField = new TextField();
+        usernameField.setPromptText("e.g. seller1");
         PasswordField passwordField = new PasswordField();
         Label statusLabel = new Label();
-        statusLabel.setStyle("-fx-text-fill: crimson;");
+        statusLabel.getStyleClass().addAll("status-label", "error");
         Button loginButton = new Button("Log In");
+        loginButton.setDefaultButton(true);
 
         GridPane grid = new GridPane();
         grid.setAlignment(Pos.CENTER);
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.setPadding(new Insets(25));
+        grid.setHgap(12);
+        grid.setVgap(12);
 
         grid.add(new Label("Server host:"), 0, 0);
         grid.add(hostField, 1, 0);
@@ -51,8 +54,6 @@ public class LoginScreen {
         grid.add(usernameField, 1, 2);
         grid.add(new Label("Password:"), 0, 3);
         grid.add(passwordField, 1, 3);
-        grid.add(loginButton, 1, 4);
-        grid.add(statusLabel, 0, 5, 2, 1);
 
         connection.on(MessageType.LOGIN_RESPONSE, message -> {
             LoginResponse response = message.readPayload(connection.getGson(), LoginResponse.class);
@@ -77,7 +78,21 @@ public class LoginScreen {
             }
         });
 
-        Scene scene = new Scene(grid, 380, 280);
+        Label title = new Label("ManageStoreSystem");
+        title.setId("login-title");
+        Label subtitle = new Label("Store chain management — sign in");
+        subtitle.setId("login-subtitle");
+
+        VBox card = new VBox(16, title, subtitle, grid, loginButton, statusLabel);
+        card.setId("login-card");
+        card.setAlignment(Pos.CENTER);
+        card.setPadding(new Insets(10));
+        VBox.setMargin(loginButton, new Insets(6, 0, 0, 0));
+
+        StackPane backdrop = new StackPane(card);
+        backdrop.setId("login-backdrop");
+
+        Scene scene = new Scene(backdrop, 460, 520);
         scene.getStylesheets().add(getClass().getResource("/app.css").toExternalForm());
         stage.setTitle("ManageStoreSystem — Login");
         stage.setScene(scene);

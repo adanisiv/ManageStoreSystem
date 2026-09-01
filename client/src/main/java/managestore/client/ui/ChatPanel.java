@@ -1,7 +1,9 @@
 package managestore.client.ui;
 
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
@@ -11,6 +13,8 @@ import javafx.scene.layout.VBox;
 import managestore.client.net.ServerConnection;
 import managestore.common.model.Employee;
 import managestore.common.model.Role;
+import managestore.common.protocol.BranchDto;
+import managestore.common.protocol.BranchListResponse;
 import managestore.common.protocol.ChatEndNotice;
 import managestore.common.protocol.ChatFreeNotice;
 import managestore.common.protocol.ChatJoinRequest;
@@ -38,8 +42,16 @@ public class ChatPanel {
     }
 
     public BorderPane build() {
-        TextField targetBranchField = new TextField();
-        targetBranchField.setPromptText("Target branch ID");
+        ChoiceBox<BranchDto> targetBranchChoice = new ChoiceBox<>();
+        targetBranchChoice.setPrefWidth(220);
+        connection.on(MessageType.BRANCH_LIST_RESPONSE, message -> {
+            BranchListResponse response = message.readPayload(connection.getGson(), BranchListResponse.class);
+            targetBranchChoice.setItems(FXCollections.observableArrayList(response.getBranches()));
+            if (!response.getBranches().isEmpty()) {
+                targetBranchChoice.getSelectionModel().selectFirst();
+            }
+        });
+        connection.send(MessageType.BRANCH_LIST_REQUEST, new Object());
         Button requestButton = new Button("Request Chat");
         Label statusLabel = new Label("Not in a chat.");
 
@@ -56,8 +68,12 @@ public class ChatPanel {
         joinTargetField.setPromptText("Employee # to join their chat");
         Button joinButton = new Button("Join as Shift Manager");
 
-        requestButton.setOnAction(e -> connection.send(MessageType.CHAT_REQUEST,
-                new ChatRequestDto(targetBranchField.getText().trim())));
+        requestButton.setOnAction(e -> {
+            BranchDto target = targetBranchChoice.getValue();
+            if (target != null) {
+                connection.send(MessageType.CHAT_REQUEST, new ChatRequestDto(target.getId()));
+            }
+        });
 
         sendButton.setOnAction(e -> {
             if (activeSessionId != null && !messageField.getText().trim().isEmpty()) {
@@ -109,14 +125,20 @@ public class ChatPanel {
             endButton.setDisable(true);
         });
 
-        HBox requestBar = new HBox(8, targetBranchField, requestButton, statusLabel);
+        endButton.getStyleClass().add("secondary");
+
+        HBox requestBar = new HBox(8, new Label("Chat with a free employee at:"), targetBranchChoice, requestButton, statusLabel);
+        requestBar.getStyleClass().add("toolbar");
         requestBar.setPadding(new Insets(8));
         HBox sendBar = new HBox(8, messageField, sendButton, endButton);
+        sendBar.getStyleClass().add("toolbar");
         sendBar.setPadding(new Insets(8));
 
-        VBox top = new VBox(requestBar);
+        VBox top = new VBox(8, requestBar);
         if (employee.getRole() == Role.SHIFT_MANAGER) {
+            joinTargetField.setPromptText("Employee # to join (see the Employees tab)");
             HBox joinBar = new HBox(8, joinTargetField, joinButton);
+            joinBar.getStyleClass().add("toolbar");
             joinBar.setPadding(new Insets(8));
             top.getChildren().add(joinBar);
         }

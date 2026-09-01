@@ -13,6 +13,8 @@ import managestore.common.model.Product;
 import managestore.common.model.PurchaseResult;
 import managestore.common.model.Role;
 import managestore.common.model.SalesRecord;
+import managestore.common.protocol.BranchDto;
+import managestore.common.protocol.BranchListResponse;
 import managestore.common.protocol.ChatJoinRequest;
 import managestore.common.protocol.ChatMessageDto;
 import managestore.common.protocol.ChatRequestDto;
@@ -163,6 +165,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 break;
             case EMPLOYEE_LIST_REQUEST:
                 handleEmployeeListRequest();
+                break;
+            case BRANCH_LIST_REQUEST:
+                handleBranchListRequest();
                 break;
             case EMPLOYEE_ADD_REQUEST:
                 handleEmployeeAddRequest(message);
@@ -360,6 +365,18 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
         channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_UPDATE_BROADCAST,
                 new CustomerUpdateNotice(CustomerDto.from(customer), newlyAdded)));
+    }
+
+    /** Lets a client offer a branch picker instead of requiring the user to know/type an exact branch id. */
+    private void handleBranchListRequest() {
+        if (!requireLogin()) {
+            return;
+        }
+        List<BranchDto> dtos = new ArrayList<>();
+        for (Branch branch : context.getStoreChain().allBranches()) {
+            dtos.add(BranchDto.from(branch));
+        }
+        channel.send(Message.of(context.getGson(), MessageType.BRANCH_LIST_RESPONSE, new BranchListResponse(dtos)));
     }
 
     // ---- employees ----------------------------------------------------------

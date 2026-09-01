@@ -6,6 +6,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
 import managestore.client.net.ServerConnection;
 import managestore.common.protocol.LogEventDto;
 import managestore.common.protocol.LogListRequest;
@@ -29,7 +30,10 @@ public class LogsPanel {
 
         Button refreshButton = new Button("Refresh");
         refreshButton.setOnAction(e -> connection.send(MessageType.LOG_LIST_REQUEST, new LogListRequest(null)));
-        refreshButton.setPadding(new Insets(8));
+
+        HBox toolbar = new HBox(refreshButton);
+        toolbar.getStyleClass().add("toolbar");
+        toolbar.setPadding(new Insets(8));
 
         connection.on(MessageType.LOG_LIST_RESPONSE, message -> {
             LogListResponse response = message.readPayload(connection.getGson(), LogListResponse.class);
@@ -39,7 +43,7 @@ public class LogsPanel {
         connection.send(MessageType.LOG_LIST_REQUEST, new LogListRequest(null));
 
         BorderPane pane = new BorderPane();
-        pane.setTop(refreshButton);
+        pane.setTop(toolbar);
         pane.setCenter(table);
         return pane;
     }

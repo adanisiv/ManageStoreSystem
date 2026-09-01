@@ -45,4 +45,10 @@ public class CustomerDto {
     public String getCustomerType() {
         return customerType;
     }
+
+    /** Drives how this DTO displays itself in a JavaFX ChoiceBox (customer picker in InventoryPanel). */
+    @Override
+    public String toString() {
+        return fullName + " (" + customerType + ", " + personalId + ")";
+    }
 }

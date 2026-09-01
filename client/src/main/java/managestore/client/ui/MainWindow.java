@@ -33,13 +33,13 @@ public class MainWindow {
         header.setMaxWidth(Double.MAX_VALUE);
 
         TabPane tabs = new TabPane();
-        tabs.getTabs().add(tab("Inventory", new InventoryPanel(connection).build()));
-        tabs.getTabs().add(tab("Customers", new CustomersPanel(connection).build()));
-        tabs.getTabs().add(tab("Reports", new ReportsPanel(connection).build()));
-        tabs.getTabs().add(tab("Chat", new ChatPanel(connection, employee).build()));
-        tabs.getTabs().add(tab("Employees", new EmployeesPanel(connection, employee).build()));
+        tabs.getTabs().add(tab("📦 Inventory", new InventoryPanel(connection).build()));
+        tabs.getTabs().add(tab("👥 Customers", new CustomersPanel(connection).build()));
+        tabs.getTabs().add(tab("📊 Reports", new ReportsPanel(connection).build()));
+        tabs.getTabs().add(tab("💬 Chat", new ChatPanel(connection, employee).build()));
+        tabs.getTabs().add(tab("🧑‍💼 Employees", new EmployeesPanel(connection, employee).build()));
         if (employee.getRole() == Role.ADMIN) {
-            tabs.getTabs().add(tab("System Log", new LogsPanel(connection).build()));
+            tabs.getTabs().add(tab("📋 System Log", new LogsPanel(connection).build()));
         }
 
         BorderPane root = new BorderPane();

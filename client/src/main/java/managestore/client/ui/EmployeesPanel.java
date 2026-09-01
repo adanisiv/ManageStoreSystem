@@ -15,6 +15,8 @@ import javafx.scene.layout.HBox;
 import managestore.client.net.ServerConnection;
 import managestore.common.model.Employee;
 import managestore.common.model.Role;
+import managestore.common.protocol.BranchDto;
+import managestore.common.protocol.BranchListResponse;
 import managestore.common.protocol.EmployeeAddRequest;
 import managestore.common.protocol.EmployeeAddResponse;
 import managestore.common.protocol.EmployeeListResponse;
@@ -49,6 +51,11 @@ public class EmployeesPanel {
         pane.setCenter(table);
         if (currentEmployee.getRole() == Role.ADMIN) {
             pane.setBottom(buildAddEmployeeForm());
+        } else {
+            Label adminOnlyNote = new Label("Only an ADMIN account can add new employees — log in as admin (e.g. admin / Admin1234 on the demo server) to use this form.");
+            adminOnlyNote.setWrapText(true);
+            adminOnlyNote.setStyle("-fx-text-fill: -muted; -fx-padding: 10px;");
+            pane.setBottom(adminOnlyNote);
         }
         return pane;
     }
@@ -64,8 +71,15 @@ public class EmployeesPanel {
         phoneField.setPromptText("Phone");
         TextField accountField = new TextField();
         accountField.setPromptText("Account #");
-        TextField branchField = new TextField();
-        branchField.setPromptText("Branch ID");
+        ChoiceBox<BranchDto> branchChoice = new ChoiceBox<>();
+        connection.on(MessageType.BRANCH_LIST_RESPONSE, message -> {
+            BranchListResponse response = message.readPayload(connection.getGson(), BranchListResponse.class);
+            branchChoice.setItems(FXCollections.observableArrayList(response.getBranches()));
+            if (!response.getBranches().isEmpty()) {
+                branchChoice.getSelectionModel().selectFirst();
+            }
+        });
+        connection.send(MessageType.BRANCH_LIST_REQUEST, new Object());
         ChoiceBox<Role> roleChoice = new ChoiceBox<>(FXCollections.observableArrayList(Role.values()));
         roleChoice.getSelectionModel().selectFirst();
         TextField usernameField = new TextField();
@@ -74,22 +88,32 @@ public class EmployeesPanel {
         passwordField.setPromptText("Password");
         Button addButton = new Button("Add Employee");
         Label statusLabel = new Label();
+        statusLabel.getStyleClass().add("status-label");
 
         connection.on(MessageType.EMPLOYEE_ADD_RESPONSE, message -> {
             EmployeeAddResponse response = message.readPayload(connection.getGson(), EmployeeAddResponse.class);
-            statusLabel.setText(response.isSuccess() ? "Employee added." : "Failed: " + response.getErrorMessage());
+            UiUtil.setStatus(statusLabel, response.isSuccess(),
+                    response.isSuccess() ? "Employee added." : "Failed: " + response.getErrorMessage());
             if (response.isSuccess()) {
                 connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
             }
         });
 
-        addButton.setOnAction(e -> connection.send(MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
-                numberField.getText().trim(), nameField.getText().trim(), personalIdField.getText().trim(),
-                phoneField.getText().trim(), accountField.getText().trim(), branchField.getText().trim(),
-                roleChoice.getValue().name(), usernameField.getText().trim(), passwordField.getText())));
+        addButton.setOnAction(e -> {
+            BranchDto branch = branchChoice.getValue();
+            if (branch == null) {
+                UiUtil.setStatus(statusLabel, false, "No branch available to assign.");
+                return;
+            }
+            connection.send(MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
+                    numberField.getText().trim(), nameField.getText().trim(), personalIdField.getText().trim(),
+                    phoneField.getText().trim(), accountField.getText().trim(), branch.getId(),
+                    roleChoice.getValue().name(), usernameField.getText().trim(), passwordField.getText()));
+        });
 
-        HBox form = new HBox(6, numberField, nameField, personalIdField, phoneField, accountField, branchField,
+        HBox form = new HBox(6, numberField, nameField, personalIdField, phoneField, accountField, branchChoice,
                 roleChoice, usernameField, passwordField, addButton, statusLabel);
+        form.getStyleClass().add("toolbar");
         form.setPadding(new Insets(8));
         return form;
     }

@@ -51,7 +51,8 @@ behavior is what the brief's self-study section asked for. Show
 | Per-branch inventory synced live | `Inventory` (Observer), `InventoryPanel` |
 | Network-wide customer list synced live | `CustomerDirectory` (Observer), `CustomersPanel` |
 | Different class per customer type | `Customer` hierarchy — see §2a |
-| Sales reports by branch/product/category, JSON + Word | `ReportService`, `ReportExporter` (Strategy) → `JsonReportExporter` / `WordReportExporter` (Apache POI) |
+| Per-branch inventory: purchase (restock) and sale | `InventoryPanel`'s Sell/Restock buttons, `PurchaseService.purchase`/`.restock` |
+| Sales reports by branch/product/category, JSON + Word, optionally by day | `ReportService`, `ReportExporter` (Strategy) → `JsonReportExporter` / `WordReportExporter` (Apache POI); `ReportRequest.day` for the daily-report filter |
 | Employee management | `EmployeeRepository`, `EmployeesPanel` |
 | Cross-branch chat with queueing + callback | `ChatMediator` — see §2c |
 | Shift manager joins existing chat | `ChatMediator.joinChat`, `ChatPanel`'s join form |

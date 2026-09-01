@@ -5,6 +5,7 @@ import javafx.geometry.Insets;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ChoiceBox;
+import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -27,10 +28,11 @@ import java.nio.file.Files;
 import java.util.Base64;
 
 /**
- * Sales reports by branch/product/category (or one grand total), delivered
- * as JSON either way per the brief — WORD format additionally comes back
- * with the actual .docx bytes (Base64-encoded over the same JSON protocol)
- * so "Save as Word" just decodes and writes them to disk.
+ * Sales reports by branch/product/category (or one grand total), optionally
+ * narrowed to one calendar day — the brief's "daily report" — delivered as
+ * JSON either way per the brief. WORD format additionally comes back with
+ * the actual .docx bytes (Base64-encoded over the same JSON protocol) so
+ * "Save as Word" just decodes and writes them to disk.
  */
 public class ReportsPanel {
 
@@ -46,6 +48,8 @@ public class ReportsPanel {
         scopeChoice.getSelectionModel().select(ReportScope.BRANCH);
         TextField filterField = new TextField();
         filterField.setPromptText("Filter value (optional)");
+        DatePicker dayPicker = new DatePicker();
+        dayPicker.setPromptText("Day (optional)");
         ChoiceBox<ReportFormat> formatChoice = new ChoiceBox<>(FXCollections.observableArrayList(ReportFormat.values()));
         formatChoice.getSelectionModel().select(ReportFormat.JSON);
         Button generateButton = new Button("Generate");
@@ -59,15 +63,16 @@ public class ReportsPanel {
         table.getColumns().add(column("Quantity Sold", "quantitySold"));
         table.getColumns().add(column("Revenue", "revenue"));
 
-        HBox controls = new HBox(8, scopeChoice, filterField, formatChoice, generateButton, saveWordButton);
+        HBox controls = new HBox(8, scopeChoice, filterField, dayPicker, formatChoice, generateButton, saveWordButton);
         controls.setPadding(new Insets(8));
 
         generateButton.setOnAction(e -> {
             saveWordButton.setDisable(true);
             pendingWordFile = null;
             String filterValue = filterField.getText().trim().isEmpty() ? null : filterField.getText().trim();
+            String day = dayPicker.getValue() != null ? dayPicker.getValue().toString() : null;
             connection.send(MessageType.REPORT_REQUEST,
-                    new ReportRequest(scopeChoice.getValue(), filterValue, formatChoice.getValue()));
+                    new ReportRequest(scopeChoice.getValue(), filterValue, formatChoice.getValue(), day));
         });
 
         saveWordButton.setOnAction(e -> {

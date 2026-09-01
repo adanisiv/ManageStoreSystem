@@ -38,6 +38,8 @@ import managestore.common.protocol.PurchaseRequest;
 import managestore.common.protocol.PurchaseResponse;
 import managestore.common.protocol.ReportRequest;
 import managestore.common.protocol.ReportResponse;
+import managestore.common.protocol.RestockRequest;
+import managestore.common.protocol.RestockResponse;
 import managestore.common.protocol.StockEntry;
 import managestore.server.service.ChatEndpoint;
 import managestore.server.service.LogManager;
@@ -45,6 +47,7 @@ import managestore.server.service.SessionManager;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -133,6 +136,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 break;
             case PURCHASE_REQUEST:
                 handlePurchaseRequest(message);
+                break;
+            case RESTOCK_REQUEST:
+                handleRestockRequest(message);
                 break;
             case CUSTOMER_LIST_REQUEST:
                 handleCustomerListRequest();
@@ -296,6 +302,29 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
     }
 
+    /** The brief's "purchase" side of the Inventory interface: adds stock, as opposed to selling it. */
+    private void handleRestockRequest(Message message) {
+        if (!requireLoginAndBranch()) {
+            return;
+        }
+        RestockRequest request = message.readPayload(context.getGson(), RestockRequest.class);
+        Product product = context.getStoreChain().getProduct(request.getSku());
+        if (product == null) {
+            channel.send(Message.of(context.getGson(), MessageType.RESTOCK_RESPONSE,
+                    RestockResponse.failure("Unknown product: " + request.getSku())));
+            return;
+        }
+        try {
+            int newQuantity = context.getPurchaseService().restock(subscribedBranch, product, request.getQuantity());
+            LogManager.getInstance().log(new LogEvent(LogType.PURCHASE, loggedInEmployee.getEmployeeNumber(),
+                    "Restocked " + request.getQuantity() + "x " + product.getSku() + " at " + subscribedBranch.getId()
+                            + " (new quantity " + newQuantity + ")"));
+            channel.send(Message.of(context.getGson(), MessageType.RESTOCK_RESPONSE, RestockResponse.success(newQuantity)));
+        } catch (IllegalArgumentException e) {
+            channel.send(Message.of(context.getGson(), MessageType.RESTOCK_RESPONSE, RestockResponse.failure(e.getMessage())));
+        }
+    }
+
     // ---- customers ----------------------------------------------------------
 
     private void handleCustomerListRequest() {
@@ -404,8 +433,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             return;
         }
         ReportRequest request = message.readPayload(context.getGson(), ReportRequest.class);
-        ReportResponse response = context.getReportService().generate(
-                context.getSalesRecordRepository().all(), request.getScope(), request.getFilterValue(), request.getFormat());
+        LocalDate day = request.getDay() != null ? LocalDate.parse(request.getDay()) : null;
+        ReportResponse response = context.getReportService().generate(context.getSalesRecordRepository().all(),
+                request.getScope(), request.getFilterValue(), request.getFormat(), day);
         channel.send(Message.of(context.getGson(), MessageType.REPORT_RESPONSE, response));
     }
 

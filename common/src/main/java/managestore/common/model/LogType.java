@@ -4,6 +4,8 @@ package managestore.common.model;
 public enum LogType {
     EMPLOYEE_REGISTERED,
     CUSTOMER_REGISTERED,
+    /** Stock added to a branch's inventory (the brief's "purchase", as distinct from a customer "sale"). */
+    PURCHASE,
     SALE,
     CHAT
 }

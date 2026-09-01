@@ -19,16 +19,20 @@ import managestore.common.protocol.InventoryUpdateNotice;
 import managestore.common.protocol.MessageType;
 import managestore.common.protocol.PurchaseRequest;
 import managestore.common.protocol.PurchaseResponse;
+import managestore.common.protocol.RestockRequest;
+import managestore.common.protocol.RestockResponse;
 import managestore.common.protocol.StockEntry;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Shows this employee's branch inventory and lets them sell a product.
- * Populated once via INVENTORY_SNAPSHOT_REQUEST/RESPONSE, then kept live by
- * INVENTORY_UPDATE pushes — including ones caused by other employees, which
- * is the whole point of the Observer wiring on the server.
+ * Shows this employee's branch inventory and lets them both sell a product
+ * to a customer and restock one from the supplier — the brief's "will allow
+ * performing purchase and sale of products". Populated once via
+ * INVENTORY_SNAPSHOT_REQUEST/RESPONSE, then kept live by INVENTORY_UPDATE
+ * pushes — including ones caused by other employees, which is the whole
+ * point of the Observer wiring on the server.
  */
 public class InventoryPanel {
 
@@ -54,12 +58,16 @@ public class InventoryPanel {
         TextField customerIdField = new TextField();
         customerIdField.setPromptText("Customer ID");
         Button sellButton = new Button("Sell");
+        Button restockButton = new Button("Restock (purchase)");
         Label statusLabel = new Label();
 
         sellButton.setOnAction(e -> connection.send(MessageType.PURCHASE_REQUEST,
                 new PurchaseRequest(skuField.getText().trim(), quantitySpinner.getValue(), customerIdField.getText().trim())));
 
-        HBox sellBar = new HBox(8, skuField, quantitySpinner, customerIdField, sellButton);
+        restockButton.setOnAction(e -> connection.send(MessageType.RESTOCK_REQUEST,
+                new RestockRequest(skuField.getText().trim(), quantitySpinner.getValue())));
+
+        HBox sellBar = new HBox(8, skuField, quantitySpinner, customerIdField, sellButton, restockButton);
         sellBar.setPadding(new Insets(8));
 
         connection.on(MessageType.INVENTORY_SNAPSHOT_RESPONSE, message -> {
@@ -82,6 +90,13 @@ public class InventoryPanel {
             statusLabel.setText(response.isSuccess()
                     ? "Sold — charged " + response.getAmountCharged() + " (list " + response.getListTotal() + ")"
                     : "Sale failed: " + response.getErrorMessage());
+        });
+
+        connection.on(MessageType.RESTOCK_RESPONSE, message -> {
+            RestockResponse response = message.readPayload(connection.getGson(), RestockResponse.class);
+            statusLabel.setText(response.isSuccess()
+                    ? "Restocked — new quantity " + response.getNewQuantity()
+                    : "Restock failed: " + response.getErrorMessage());
         });
 
         connection.send(MessageType.INVENTORY_SNAPSHOT_REQUEST, new Object());

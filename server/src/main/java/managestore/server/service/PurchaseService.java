@@ -17,4 +17,15 @@ public class PurchaseService {
     public PurchaseResult purchase(Branch branch, Product product, int quantity, Customer customer) {
         return customer.purchase(product, quantity, branch.getInventory());
     }
+
+    /**
+     * Adds stock of an existing product to a branch's inventory — the
+     * brief's "purchase" side of "the interface will allow performing
+     * purchase and sale of products", as distinct from {@link #purchase}
+     * (a customer buying from stock).
+     */
+    public int restock(Branch branch, Product product, int quantity) {
+        branch.getInventory().addStock(product, quantity);
+        return branch.getInventory().getQuantity(product);
+    }
 }

@@ -22,10 +22,14 @@ when presenting this project.
 
 ## Requirements
 
-- JDK 8 (Amazon Corretto 8 on Windows/macOS bundles JavaFX; on other JDK 8
-  distributions you may need to add JavaFX separately, or upgrade the
-  project's `maven.compiler.source/target` and add `javafx-controls` as an
-  explicit dependency if you move to JDK 11+).
+- JDK 8 that bundles JavaFX — Oracle's own JDK 8 included it, and most JDK 8
+  installs people already have on Windows/macOS do too, so this usually
+  needs no extra setup. If running the client throws
+  `NoClassDefFoundError: javafx/...`, your JDK 8 build doesn't include it —
+  either switch to a free JDK 8 build that does (search "JDK 8 with
+  JavaFX" — several vendors offer one, no account or paid license needed),
+  or add `javafx-controls`/`javafx-fxml` as explicit Maven dependencies and
+  bump `maven.compiler.source/target` to 11+ instead.
 - Maven 3.6+ (a portable copy works fine — no admin/system install required).
 
 ## Build & test

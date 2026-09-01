@@ -10,6 +10,8 @@ import managestore.common.protocol.ReportResponse;
 import managestore.common.protocol.ReportScope;
 import managestore.server.report.ReportExporter;
 
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -33,7 +35,16 @@ public class ReportService {
     }
 
     public ReportResponse generate(List<SalesRecord> records, ReportScope scope, String filterValue, ReportFormat format) {
-        List<SalesRecord> filtered = filter(records, scope, filterValue);
+        return generate(records, scope, filterValue, format, null);
+    }
+
+    /**
+     * Same as {@link #generate(List, ReportScope, String, ReportFormat)}, additionally
+     * narrowed to one calendar day (the brief's "daily report") when {@code day} is non-null.
+     */
+    public ReportResponse generate(List<SalesRecord> records, ReportScope scope, String filterValue,
+                                    ReportFormat format, LocalDate day) {
+        List<SalesRecord> filtered = filter(filterByDay(records, day), scope, filterValue);
         Map<String, ReportLineDto> byKey = new LinkedHashMap<>();
 
         for (SalesRecord record : filtered) {
@@ -48,7 +59,7 @@ public class ReportService {
         List<ReportLineDto> lines = new ArrayList<>(byKey.values());
         int totalQuantity = lines.stream().mapToInt(ReportLineDto::getQuantitySold).sum();
         double totalRevenue = lines.stream().mapToDouble(ReportLineDto::getRevenue).sum();
-        String title = titleFor(scope, filterValue);
+        String title = titleFor(scope, filterValue, day);
 
         String wordBase64 = null;
         if (format == ReportFormat.WORD) {
@@ -57,6 +68,20 @@ public class ReportService {
         }
 
         return new ReportResponse(title, lines, totalQuantity, totalRevenue, format, wordBase64);
+    }
+
+    /** Compares each sale's {@link SalesRecord#getTimestamp()} against {@code day} in UTC, so results are deterministic regardless of server timezone. */
+    private List<SalesRecord> filterByDay(List<SalesRecord> records, LocalDate day) {
+        if (day == null) {
+            return records;
+        }
+        List<SalesRecord> filtered = new ArrayList<>();
+        for (SalesRecord record : records) {
+            if (day.equals(record.getTimestamp().atZone(ZoneOffset.UTC).toLocalDate())) {
+                filtered.add(record);
+            }
+        }
+        return filtered;
     }
 
     private List<SalesRecord> filter(List<SalesRecord> records, ReportScope scope, String filterValue) {
@@ -102,7 +127,7 @@ public class ReportService {
         }
     }
 
-    private String titleFor(ReportScope scope, String filterValue) {
+    private String titleFor(ReportScope scope, String filterValue, LocalDate day) {
         String base;
         switch (scope) {
             case BRANCH:
@@ -118,6 +143,7 @@ public class ReportService {
             default:
                 base = "Sales Report";
         }
-        return filterValue != null ? base + " (" + filterValue + ")" : base;
+        String withFilter = filterValue != null ? base + " (" + filterValue + ")" : base;
+        return day != null ? withFilter + " on " + day : withFilter;
     }
 }

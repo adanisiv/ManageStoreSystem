@@ -6,7 +6,6 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.StackPane;
@@ -35,7 +34,7 @@ public class LoginScreen {
         TextField portField = new TextField(String.valueOf(defaultPort));
         TextField usernameField = new TextField();
         usernameField.setPromptText("e.g. seller1");
-        PasswordField passwordField = new PasswordField();
+        PasswordRevealField passwordField = new PasswordRevealField();
         Label statusLabel = new Label();
         statusLabel.getStyleClass().addAll("status-label", "error");
         Button loginButton = new Button("Log In");
@@ -53,7 +52,7 @@ public class LoginScreen {
         grid.add(new Label("Username:"), 0, 2);
         grid.add(usernameField, 1, 2);
         grid.add(new Label("Password:"), 0, 3);
-        grid.add(passwordField, 1, 3);
+        grid.add(passwordField.getNode(), 1, 3);
 
         connection.on(MessageType.LOGIN_RESPONSE, message -> {
             LoginResponse response = message.readPayload(connection.getGson(), LoginResponse.class);

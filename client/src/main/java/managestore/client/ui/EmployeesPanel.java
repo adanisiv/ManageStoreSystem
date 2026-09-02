@@ -7,7 +7,6 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.PasswordField;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -153,7 +152,7 @@ public class EmployeesPanel {
         roleChoice.getSelectionModel().selectFirst();
         TextField usernameField = new TextField();
         usernameField.setPromptText("Username");
-        PasswordField passwordField = new PasswordField();
+        PasswordRevealField passwordField = new PasswordRevealField();
         passwordField.setPromptText("Password");
         Button addButton = new Button("Add Employee");
         Label statusLabel = new Label();
@@ -192,7 +191,7 @@ public class EmployeesPanel {
         });
 
         HBox form = new HBox(6, numberField, nameField, personalIdField, phoneField, accountField, branchChoice,
-                roleChoice, usernameField, passwordField, addButton, statusLabel);
+                roleChoice, usernameField, passwordField.getNode(), addButton, statusLabel);
         form.getStyleClass().add("toolbar");
         form.setPadding(new Insets(8));
         return form;

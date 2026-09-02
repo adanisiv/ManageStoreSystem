@@ -125,27 +125,16 @@ public class LoginScreen {
         Label subtitle = new Label("Store chain management — sign in");
         subtitle.setId("login-subtitle");
 
-        // Only meaningful against DemoServerLauncher (ServerMain's real, graded flow starts with
-        // an empty network and no accounts at all) — worded as a hint, not a claim, so it's not
-        // misleading when pointed at a plain ServerMain instance.
-        Label demoHint = new Label(
-                "Trying the demo server? admin/Admin1234 · seller1/Seller123 · mgr1/Manager123 · seller2/Seller123");
-        demoHint.setId("login-demo-hint");
-        demoHint.setWrapText(true);
-        demoHint.setAlignment(Pos.CENTER);
-        demoHint.setMaxWidth(340);
-
-        VBox card = new VBox(14, logo, title, subtitle, grid, loginButton, statusLabel, demoHint);
+        VBox card = new VBox(14, logo, title, subtitle, grid, loginButton, statusLabel);
         card.setId("login-card");
         card.setAlignment(Pos.CENTER);
         card.setPadding(new Insets(10));
         VBox.setMargin(loginButton, new Insets(6, 0, 0, 0));
-        VBox.setMargin(demoHint, new Insets(6, 0, 0, 0));
 
         StackPane backdrop = new StackPane(card);
         backdrop.setId("login-backdrop");
 
-        Scene scene = new Scene(backdrop, 500, 590);
+        Scene scene = new Scene(backdrop, 500, 520);
         scene.getStylesheets().add(getClass().getResource("/app.css").toExternalForm());
         stage.setTitle("ManageStoreSystem — Login");
         stage.setScene(scene);

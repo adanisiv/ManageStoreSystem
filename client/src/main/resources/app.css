@@ -230,12 +230,6 @@
     -fx-text-fill: -muted;
 }
 
-#login-demo-hint {
-    -fx-font-size: 11px;
-    -fx-text-fill: -muted;
-    -fx-text-alignment: center;
-}
-
 /* Scoped to the login button specifically (by id), not every button in the card — every
    javafx.scene.control.Button already carries the base ".button" style class automatically, so
    an id-less ".button" rule here would also stretch the compact icon-toggle button (see

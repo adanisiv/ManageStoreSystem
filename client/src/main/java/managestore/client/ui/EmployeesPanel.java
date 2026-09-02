@@ -37,7 +37,9 @@ public class EmployeesPanel {
         TableView<Employee> table = new TableView<>();
         table.getColumns().add(column("Employee #", "employeeNumber"));
         table.getColumns().add(column("Full Name", "fullName"));
+        table.getColumns().add(column("Personal ID", "personalId"));
         table.getColumns().add(column("Phone", "phone"));
+        table.getColumns().add(column("Account #", "accountNumber"));
         table.getColumns().add(column("Branch", "branchId"));
         table.getColumns().add(column("Role", "role"));
 
@@ -47,7 +49,18 @@ public class EmployeesPanel {
         });
         connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
 
+        // Unlike Inventory/Customers, the roster has no live push (nothing subscribes to employee
+        // additions), so if a second admin is looking at this tab while a first admin adds someone,
+        // the second admin has no way to see it short of logging out and back in — a Refresh button
+        // is the minimal fix, matching the one LogsPanel already has for the same reason.
+        Button refreshButton = new Button("Refresh");
+        refreshButton.setOnAction(e -> connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object()));
+        HBox refreshBar = new HBox(refreshButton);
+        refreshBar.getStyleClass().add("toolbar");
+        refreshBar.setPadding(new Insets(8));
+
         BorderPane pane = new BorderPane();
+        pane.setTop(refreshBar);
         pane.setCenter(table);
         if (currentEmployee.getRole() == Role.ADMIN) {
             pane.setBottom(buildAddEmployeeForm());
@@ -96,6 +109,17 @@ public class EmployeesPanel {
                     response.isSuccess() ? "Employee added." : "Failed: " + response.getErrorMessage());
             if (response.isSuccess()) {
                 connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
+                // Clear the whole form, not just the obviously-sensitive password field: leaving
+                // the previous employee's number/personal ID/username sitting there invites
+                // clicking "Add Employee" again by habit and hitting the now-rejected duplicate
+                // employee number, instead of just typing the next one.
+                numberField.clear();
+                nameField.clear();
+                personalIdField.clear();
+                phoneField.clear();
+                accountField.clear();
+                usernameField.clear();
+                passwordField.clear();
             }
         });
 

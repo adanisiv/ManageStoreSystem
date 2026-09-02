@@ -51,6 +51,22 @@ class CustomerTest {
     }
 
     @Test
+    void vipDiscountNeverGoesNegativeOnACheapEnoughItem() {
+        // VIPCustomer's flat $10 perk credit is subtracted *after* the 15% discount, so an item
+        // cheap enough (list price under ~$11.76) would otherwise produce a *negative* charge —
+        // the store paying the customer to take it. This is the boundary that actually exercises
+        // the Math.max(..., 0) floor in VIPCustomer.applyDiscount; nothing else in this file does.
+        Customer customer = new VIPCustomer("555", "Tamar", "050-0000004");
+        Product cheapHat = new Product("SKU-HAT", "Beanie", "Accessories", 5.0);
+        inventory.addStock(cheapHat, 5);
+
+        PurchaseResult result = customer.purchase(cheapHat, 1, inventory);
+
+        assertEquals(5.0, result.getListTotal());
+        assertEquals(0.0, result.getAmountCharged(), "a discount can floor at free, but must never charge negative");
+    }
+
+    @Test
     void purchaseRejectsInsufficientStock() {
         Customer customer = new NewCustomer("444", "Amit", "050-0000003");
 

@@ -12,4 +12,7 @@ public interface EmployeeRepository {
     List<Employee> findAll();
 
     void save(Employee employee);
+
+    /** No-op if no employee with that number exists. */
+    void delete(String employeeNumber);
 }

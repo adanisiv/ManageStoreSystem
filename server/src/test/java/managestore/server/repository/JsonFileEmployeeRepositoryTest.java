@@ -56,6 +56,36 @@ class JsonFileEmployeeRepositoryTest {
     }
 
     @Test
+    void deleteRemovesTheEmployeeAndSurvivesReload(@TempDir Path dir) {
+        Path file = dir.resolve("employees.json");
+        JsonFileEmployeeRepository repo = new JsonFileEmployeeRepository(file);
+        repo.save(new Employee("E1", "Dana Cohen", "1", "050-1", "ACC-1", "BRANCH-1", Role.CASHIER));
+        repo.save(new Employee("E2", "Roi Levi", "2", "050-2", "ACC-2", "BRANCH-1", Role.SELLER));
+
+        repo.delete("E1");
+
+        assertFalse(repo.findByEmployeeNumber("E1").isPresent());
+        assertTrue(repo.findByEmployeeNumber("E2").isPresent(), "deleting one employee must not affect another");
+
+        // A brand-new instance reading the same file proves the delete was actually persisted,
+        // not just removed from the in-memory map.
+        JsonFileEmployeeRepository reloaded = new JsonFileEmployeeRepository(file);
+        assertFalse(reloaded.findByEmployeeNumber("E1").isPresent());
+        assertEquals(1, reloaded.findAll().size());
+    }
+
+    @Test
+    void deletingAnUnknownEmployeeNumberIsANoOp(@TempDir Path dir) {
+        Path file = dir.resolve("employees.json");
+        JsonFileEmployeeRepository repo = new JsonFileEmployeeRepository(file);
+        repo.save(new Employee("E1", "Dana Cohen", "1", "050-1", "ACC-1", "BRANCH-1", Role.CASHIER));
+
+        repo.delete("NO-SUCH-EMPLOYEE");
+
+        assertEquals(1, repo.findAll().size());
+    }
+
+    @Test
     void persistDoesNotLeaveATemporaryFileBehind(@TempDir Path dir) throws Exception {
         Path file = dir.resolve("employees.json");
         new JsonFileEmployeeRepository(file).save(

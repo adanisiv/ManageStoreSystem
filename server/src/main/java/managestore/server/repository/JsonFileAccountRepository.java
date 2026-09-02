@@ -75,4 +75,15 @@ public class JsonFileAccountRepository implements AccountRepository {
         byUsername.put(account.getUsername(), account);
         persist();
     }
+
+    @Override
+    public synchronized void deleteByEmployeeNumber(String employeeNumber) {
+        String username = byUsername.values().stream()
+                .filter(account -> account.getEmployeeNumber().equals(employeeNumber))
+                .map(Account::getUsername)
+                .findFirst().orElse(null);
+        if (username != null && byUsername.remove(username) != null) {
+            persist();
+        }
+    }
 }

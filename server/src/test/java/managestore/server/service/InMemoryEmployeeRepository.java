@@ -26,4 +26,9 @@ public class InMemoryEmployeeRepository implements EmployeeRepository {
     public void save(Employee employee) {
         byEmployeeNumber.put(employee.getEmployeeNumber(), employee);
     }
+
+    @Override
+    public void delete(String employeeNumber) {
+        byEmployeeNumber.remove(employeeNumber);
+    }
 }

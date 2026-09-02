@@ -21,4 +21,9 @@ public class InMemoryAccountRepository implements AccountRepository {
     public void save(Account account) {
         byUsername.put(account.getUsername(), account);
     }
+
+    @Override
+    public void deleteByEmployeeNumber(String employeeNumber) {
+        byUsername.values().removeIf(account -> account.getEmployeeNumber().equals(employeeNumber));
+    }
 }

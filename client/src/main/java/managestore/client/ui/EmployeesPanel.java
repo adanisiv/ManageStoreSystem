@@ -2,6 +2,8 @@ package managestore.client.ui;
 
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
@@ -19,8 +21,12 @@ import managestore.common.protocol.BranchDto;
 import managestore.common.protocol.BranchListResponse;
 import managestore.common.protocol.EmployeeAddRequest;
 import managestore.common.protocol.EmployeeAddResponse;
+import managestore.common.protocol.EmployeeDeleteRequest;
+import managestore.common.protocol.EmployeeDeleteResponse;
 import managestore.common.protocol.EmployeeListResponse;
 import managestore.common.protocol.MessageType;
+
+import java.util.Optional;
 
 /** Employee roster for the network; the "add employee" form is the brief's Admin screen, admin-only. */
 public class EmployeesPanel {
@@ -55,9 +61,13 @@ public class EmployeesPanel {
         // is the minimal fix, matching the one LogsPanel already has for the same reason.
         Button refreshButton = new Button("Refresh");
         refreshButton.setOnAction(e -> connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object()));
-        HBox refreshBar = new HBox(refreshButton);
+        HBox refreshBar = new HBox(8, refreshButton);
         refreshBar.getStyleClass().add("toolbar");
         refreshBar.setPadding(new Insets(8));
+
+        if (currentEmployee.getRole() == Role.ADMIN) {
+            refreshBar.getChildren().add(buildDeleteButton(table));
+        }
 
         BorderPane pane = new BorderPane();
         pane.setTop(refreshBar);
@@ -71,6 +81,52 @@ public class EmployeesPanel {
             pane.setBottom(adminOnlyNote);
         }
         return pane;
+    }
+
+    /**
+     * Admin-only, matching the add form. Disabled unless a row is selected, and also disabled for
+     * the admin's own row — the server refuses self-deletion too (a still-logged-in admin
+     * shouldn't be able to delete the account they're using right now), but catching that here
+     * avoids a pointless round trip and confirmation dialog for a request that's certain to be
+     * rejected anyway.
+     */
+    private Button buildDeleteButton(TableView<Employee> table) {
+        Button deleteButton = new Button("Delete Selected");
+        deleteButton.getStyleClass().add("secondary");
+        deleteButton.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(
+                () -> {
+                    Employee selected = table.getSelectionModel().getSelectedItem();
+                    return selected == null || selected.getEmployeeNumber().equals(currentEmployee.getEmployeeNumber());
+                },
+                table.getSelectionModel().selectedItemProperty()));
+
+        connection.on(MessageType.EMPLOYEE_DELETE_RESPONSE, message -> {
+            EmployeeDeleteResponse response = message.readPayload(connection.getGson(), EmployeeDeleteResponse.class);
+            if (response.isSuccess()) {
+                connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
+            } else {
+                new Alert(Alert.AlertType.ERROR, "Could not delete employee: " + response.getErrorMessage()).showAndWait();
+            }
+        });
+
+        deleteButton.setOnAction(e -> {
+            Employee selected = table.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                return;
+            }
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Delete " + selected.getFullName() + " (" + selected.getEmployeeNumber() + ")? "
+                            + "This also removes their login — they won't be able to sign in again.",
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setTitle("Delete employee");
+            confirm.setHeaderText(null);
+            Optional<ButtonType> choice = confirm.showAndWait();
+            if (choice.isPresent() && choice.get() == ButtonType.OK) {
+                connection.send(MessageType.EMPLOYEE_DELETE_REQUEST, new EmployeeDeleteRequest(selected.getEmployeeNumber()));
+            }
+        });
+
+        return deleteButton;
     }
 
     private HBox buildAddEmployeeForm() {

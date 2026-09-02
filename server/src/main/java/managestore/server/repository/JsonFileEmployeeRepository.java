@@ -92,4 +92,11 @@ public class JsonFileEmployeeRepository implements EmployeeRepository {
         byEmployeeNumber.put(employee.getEmployeeNumber(), employee);
         persist();
     }
+
+    @Override
+    public synchronized void delete(String employeeNumber) {
+        if (byEmployeeNumber.remove(employeeNumber) != null) {
+            persist();
+        }
+    }
 }

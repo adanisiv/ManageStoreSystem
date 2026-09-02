@@ -62,4 +62,15 @@ public class AuthService {
         employeeRepository.save(employee);
         accountRepository.save(new Account(employee.getEmployeeNumber(), username, hash, salt));
     }
+
+    /**
+     * Symmetric counterpart to {@link #createAccount}: removes both the employee profile and its
+     * login credentials together, so a deleted employee's username is fully freed (not just
+     * orphaned) and {@link #login} — which already refuses any account whose employee record is
+     * missing — has nothing left to even find. No-op if the employee number doesn't exist.
+     */
+    public void deleteAccount(String employeeNumber) {
+        employeeRepository.delete(employeeNumber);
+        accountRepository.deleteByEmployeeNumber(employeeNumber);
+    }
 }

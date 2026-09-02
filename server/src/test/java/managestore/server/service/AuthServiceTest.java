@@ -60,4 +60,35 @@ class AuthServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> authService.createAccount(other, "dana", "secret456"));
     }
+
+    @Test
+    void deleteAccountRemovesBothTheEmployeeAndItsLoginSoTheyCantLogInAgain() {
+        authService.createAccount(employee, "dana", "secret123");
+
+        authService.deleteAccount("E1");
+
+        LoginResponse response = authService.login("dana", "secret123");
+        assertFalse(response.isSuccess(), "a deleted employee's account should no longer be able to log in");
+    }
+
+    @Test
+    void deleteAccountFreesTheUsernameForReuse() {
+        authService.createAccount(employee, "dana", "secret123");
+        authService.deleteAccount("E1");
+
+        Employee replacement = new Employee("E2", "New Hire", "987654321", "050-2222222", "ACC-2", "BRANCH-1", Role.SELLER);
+        // Should not throw "username already taken" -- the old account is gone, not just orphaned.
+        authService.createAccount(replacement, "dana", "newSecret1");
+
+        assertTrue(authService.login("dana", "newSecret1").isSuccess());
+    }
+
+    @Test
+    void deleteAccountIsANoOpForAnUnknownEmployeeNumber() {
+        authService.createAccount(employee, "dana", "secret123");
+
+        authService.deleteAccount("NO-SUCH-EMPLOYEE");
+
+        assertTrue(authService.login("dana", "secret123").isSuccess(), "deleting an unrelated employee number must not affect anyone else");
+    }
 }

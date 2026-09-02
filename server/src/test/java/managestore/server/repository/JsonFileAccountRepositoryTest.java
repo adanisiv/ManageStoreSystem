@@ -31,6 +31,33 @@ class JsonFileAccountRepositoryTest {
     }
 
     @Test
+    void deleteByEmployeeNumberRemovesTheRightAccountAndSurvivesReload(@TempDir Path dir) {
+        Path file = dir.resolve("accounts.json");
+        JsonFileAccountRepository repo = new JsonFileAccountRepository(file);
+        repo.save(new Account("E1", "dana", "hash1", "salt1"));
+        repo.save(new Account("E2", "roi", "hash2", "salt2"));
+
+        repo.deleteByEmployeeNumber("E1");
+
+        assertFalse(repo.findByUsername("dana").isPresent());
+        assertTrue(repo.findByUsername("roi").isPresent(), "deleting one account must not affect another");
+
+        JsonFileAccountRepository reloaded = new JsonFileAccountRepository(file);
+        assertFalse(reloaded.findByUsername("dana").isPresent());
+    }
+
+    @Test
+    void deleteByEmployeeNumberIsANoOpForAnUnknownEmployeeNumber(@TempDir Path dir) {
+        Path file = dir.resolve("accounts.json");
+        JsonFileAccountRepository repo = new JsonFileAccountRepository(file);
+        repo.save(new Account("E1", "dana", "hash1", "salt1"));
+
+        repo.deleteByEmployeeNumber("NO-SUCH-EMPLOYEE");
+
+        assertTrue(repo.findByUsername("dana").isPresent());
+    }
+
+    @Test
     void persistDoesNotLeaveATemporaryFileBehind(@TempDir Path dir) {
         Path file = dir.resolve("accounts.json");
         new JsonFileAccountRepository(file).save(new Account("E1", "dana", "hash123", "salt123"));

@@ -24,6 +24,8 @@ import managestore.common.protocol.CustomerListResponse;
 import managestore.common.protocol.CustomerUpdateNotice;
 import managestore.common.protocol.EmployeeAddRequest;
 import managestore.common.protocol.EmployeeAddResponse;
+import managestore.common.protocol.EmployeeDeleteRequest;
+import managestore.common.protocol.EmployeeDeleteResponse;
 import managestore.common.protocol.EmployeeListResponse;
 import managestore.common.protocol.ErrorMessage;
 import managestore.common.protocol.InventorySnapshotResponse;
@@ -56,6 +58,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -174,6 +177,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 break;
             case EMPLOYEE_ADD_REQUEST:
                 handleEmployeeAddRequest(message);
+                break;
+            case EMPLOYEE_DELETE_REQUEST:
+                handleEmployeeDeleteRequest(message);
                 break;
             case LOG_LIST_REQUEST:
                 handleLogListRequest(message);
@@ -437,6 +443,53 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_ADD_RESPONSE,
                     EmployeeAddResponse.failure(e.getMessage())));
         }
+    }
+
+    /**
+     * Admin-only, same as add. Doesn't force-disconnect the deleted employee if they're currently
+     * logged in — their live session just keeps working until they log out or disconnect — but
+     * they can never log back in afterward: {@link managestore.server.service.AuthService#login}
+     * already refuses any account whose employee record is gone (see its "Account is not linked
+     * to an employee record" case), so removing the Employee (and its Account, so the username is
+     * fully freed, not just orphaned) here is enough without adding a way to kill a live socket
+     * from another thread.
+     */
+    private void handleEmployeeDeleteRequest(Message message) {
+        if (!requireLogin()) {
+            return;
+        }
+        if (loggedInEmployee.getRole() != Role.ADMIN) {
+            channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_DELETE_RESPONSE,
+                    EmployeeDeleteResponse.failure("Only an admin can delete employees")));
+            return;
+        }
+        EmployeeDeleteRequest request = message.readPayload(context.getGson(), EmployeeDeleteRequest.class);
+        String targetNumber = request.getEmployeeNumber();
+
+        if (targetNumber != null && targetNumber.equals(loggedInEmployee.getEmployeeNumber())) {
+            channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_DELETE_RESPONSE,
+                    EmployeeDeleteResponse.failure("You can't delete your own account while logged in as it")));
+            return;
+        }
+
+        Optional<Employee> target = context.getEmployeeRepository().findByEmployeeNumber(targetNumber);
+        if (!target.isPresent()) {
+            channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_DELETE_RESPONSE,
+                    EmployeeDeleteResponse.failure("Unknown employee number: " + targetNumber)));
+            return;
+        }
+
+        Employee employee = target.get();
+        context.getAuthService().deleteAccount(targetNumber);
+        if (employee.getBranchId() != null) {
+            Branch branch = context.getStoreChain().getBranch(employee.getBranchId());
+            if (branch != null) {
+                branch.removeEmployee(employee);
+            }
+        }
+        LogManager.getInstance().log(new LogEvent(LogType.EMPLOYEE_REMOVED, loggedInEmployee.getEmployeeNumber(),
+                "Removed employee " + employee.getEmployeeNumber() + " (" + employee.getFullName() + ")"));
+        channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_DELETE_RESPONSE, EmployeeDeleteResponse.success()));
     }
 
     // ---- logs ----------------------------------------------------------

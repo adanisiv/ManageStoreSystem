@@ -413,6 +413,13 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             requireValid(request.getAccountNumber(), "Account #");
             requireValid(request.getBranchId(), "Branch");
             requireValid(request.getUsername(), "Username");
+            // AuthService.createAccount already rejects a taken *username*, but nothing was
+            // checking the employee number itself — re-adding an existing one would silently
+            // overwrite that employee's profile (JsonFileEmployeeRepository.save is a keyed
+            // upsert), while a second, unrelated account could still end up pointing at it.
+            if (context.getEmployeeRepository().findByEmployeeNumber(request.getEmployeeNumber()).isPresent()) {
+                throw new IllegalArgumentException("Employee number already exists: " + request.getEmployeeNumber());
+            }
             Role role = Role.valueOf(request.getRole());
             Employee employee = new Employee(request.getEmployeeNumber(), request.getFullName(), request.getPersonalId(),
                     request.getPhone(), request.getAccountNumber(), request.getBranchId(), role);
@@ -507,7 +514,11 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             return;
         }
         ChatJoinRequest request = message.readPayload(context.getGson(), ChatJoinRequest.class);
-        context.getChatMediator().joinChat(loggedInEmployee.getEmployeeNumber(), request.getTargetEmployeeNumber());
+        boolean joined = context.getChatMediator().joinChat(loggedInEmployee.getEmployeeNumber(), request.getTargetEmployeeNumber());
+        if (!joined) {
+            sendError("Could not join: that employee isn't in an active chat right now, "
+                    + "or you're already in a different one — end it first.");
+        }
     }
 
     /** {@link ChatEndpoint} implementation: how ChatMediator pushes chat messages to this specific client. */

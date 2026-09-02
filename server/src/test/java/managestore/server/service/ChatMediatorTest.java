@@ -111,11 +111,41 @@ class ChatMediatorTest {
     void shiftManagerCanJoinAnExistingSession() {
         mediator.requestChat("A", "BRANCH-2"); // A <-> B
 
-        mediator.joinChat("M", "B");
+        assertTrue(mediator.joinChat("M", "B"));
 
         ChatStartedNotice noticeOnManager = shiftManager.lastPayload(ChatStartedNotice.class);
         assertEquals(3, noticeOnManager.getParticipantEmployeeNumbers().size());
         assertTrue(mediator.isBusy("M"));
+    }
+
+    @Test
+    void joinChatReturnsFalseWhenTargetHasNoActiveSession() {
+        assertFalse(mediator.joinChat("M", "B")); // B isn't in any chat yet
+        assertFalse(mediator.isBusy("M"));
+    }
+
+    @Test
+    void shiftManagerAlreadyBusyCannotJoinASecondSessionWithoutCorruptingTheFirst() {
+        mediator.requestChat("A", "BRANCH-2"); // A <-> B  (session 1)
+        RecordingChatEndpoint requesterD = new RecordingChatEndpoint();
+        mediator.register(employee("D", "BRANCH-1", Role.SELLER), requesterD);
+        mediator.requestDirectChat("D", "C"); // D <-> C  (session 2 — C was still free)
+
+        assertTrue(mediator.joinChat("M", "B"), "first join should succeed");
+        assertFalse(mediator.joinChat("M", "C"),
+                "a shift manager already busy in one session must not be able to join a second");
+
+        // Ending session 1 should still correctly notify M — proving the rejected join attempt
+        // didn't corrupt M's real mapping to session 1 (the bug this guards against: without the
+        // isBusy check, the second joinChat call would silently repoint M's session mapping to
+        // session 2 while session 1's participant list still listed M).
+        mediator.endChat("A");
+        assertEquals(MessageType.CHAT_END, shiftManager.lastType());
+        assertFalse(mediator.isBusy("M"));
+
+        // Session 2 is completely unaffected — M was never actually added to it.
+        assertTrue(mediator.isBusy("D"));
+        assertTrue(mediator.isBusy("C"));
     }
 
     @Test
@@ -131,6 +161,22 @@ class ChatMediatorTest {
         assertEquals(MessageType.CHAT_MESSAGE, sellerB.lastType());
         assertEquals("hello from A", sellerB.lastPayload(ChatMessageDto.class).getText());
         assertTrue(sellerA.types.isEmpty(), "sender should not receive its own message back");
+    }
+
+    @Test
+    void requestingADirectChatWithABusyBranchlessEmployeeDoesNotCrash() {
+        // A branchless employee (e.g. an ADMIN account, which has no branchId) who's already busy
+        // used to make requestDirectChat's queueing path call pendingByBranch.computeIfAbsent(null,
+        // ...) — a NullPointerException on the ConcurrentHashMap this used to be backed by.
+        RecordingChatEndpoint adminEndpoint = new RecordingChatEndpoint();
+        mediator.register(employee("ADMIN1", null, Role.ADMIN), adminEndpoint);
+        mediator.requestDirectChat("A", "ADMIN1"); // A <-> ADMIN1, so ADMIN1 is now busy
+        RecordingChatEndpoint requesterZ = new RecordingChatEndpoint();
+        mediator.register(employee("Z", "BRANCH-1", Role.SELLER), requesterZ);
+
+        mediator.requestDirectChat("Z", "ADMIN1"); // ADMIN1 is busy and branchless -> must not throw
+
+        assertEquals(MessageType.CHAT_QUEUED, requesterZ.lastType());
     }
 
     @Test

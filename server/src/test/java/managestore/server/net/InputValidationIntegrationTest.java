@@ -7,6 +7,7 @@ import managestore.common.model.StoreChain;
 import managestore.common.protocol.CustomerAddRequest;
 import managestore.common.protocol.EmployeeAddRequest;
 import managestore.common.protocol.EmployeeAddResponse;
+import managestore.common.protocol.EmployeeListResponse;
 import managestore.common.protocol.ErrorMessage;
 import managestore.common.protocol.LoginRequest;
 import managestore.common.protocol.LoginResponse;
@@ -25,6 +26,7 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -82,6 +84,51 @@ class InputValidationIntegrationTest {
                     "E3", "Maya Katz", "123456782", "050-1234567", "ACC-3", "B1", "SELLER", "maya1", "Secret12")));
             EmployeeAddResponse accepted = admin.receive().readPayload(gson, EmployeeAddResponse.class);
             assertTrue(accepted.isSuccess(), "a valid personal ID and phone should be accepted: " + accepted.getErrorMessage());
+        } finally {
+            serverSocket.close();
+            clientPool.shutdownNow();
+        }
+    }
+
+    @Test
+    void addEmployeeRejectsADuplicateEmployeeNumber() throws Exception {
+        // AuthService.createAccount already rejects a taken *username*, but nothing checked
+        // whether the employee *number* itself was already in use — re-adding an existing one
+        // used to silently overwrite that employee's profile instead of being refused.
+        StoreChain storeChain = new StoreChain();
+        InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
+        InMemoryEmployeeRepository employeeRepository = new InMemoryEmployeeRepository();
+        AuthService authService = new AuthService(accountRepository, employeeRepository);
+        authService.createAccount(
+                new Employee("ADMIN1", "The Boss", "1", "050-1", "ACC-1", null, Role.ADMIN), "validationAdmin", "secret123");
+
+        ServerContext context = new ServerContext(storeChain, authService, employeeRepository, gson);
+        ServerSocket serverSocket = ServerMain.bind(0);
+        int port = serverSocket.getLocalPort();
+        ExecutorService clientPool = Executors.newCachedThreadPool();
+        Thread serverThread = new Thread(() -> ServerMain.acceptLoop(serverSocket, context, clientPool));
+        serverThread.setDaemon(true);
+        serverThread.start();
+
+        try (MessageChannel admin = loginAs(port, "validationAdmin")) {
+            admin.send(Message.of(gson, MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
+                    "E1", "Dana Cohen", "123456782", "050-1234567", "ACC-1", "B1", "SELLER", "dana1", "Secret12")));
+            EmployeeAddResponse first = admin.receive().readPayload(gson, EmployeeAddResponse.class);
+            assertTrue(first.isSuccess(), "first add should succeed: " + first.getErrorMessage());
+
+            // Same employee number "E1" again, everything else different (different name, personal
+            // ID, username) — should be refused specifically because E1 already exists.
+            admin.send(Message.of(gson, MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
+                    "E1", "Someone Else", "309825149", "050-7654321", "ACC-2", "B1", "SELLER", "someoneelse", "Secret12")));
+            EmployeeAddResponse second = admin.receive().readPayload(gson, EmployeeAddResponse.class);
+            assertFalse(second.isSuccess(), "re-adding an existing employee number should be rejected, not silently overwrite it");
+
+            // Confirm the original E1 record was left untouched by the rejected second attempt.
+            admin.send(Message.of(gson, MessageType.EMPLOYEE_LIST_REQUEST, new Object()));
+            EmployeeListResponse list = admin.receive().readPayload(gson, EmployeeListResponse.class);
+            assertEquals(1, list.getEmployees().stream().filter(e -> e.getEmployeeNumber().equals("E1")).count());
+            assertEquals("Dana Cohen", list.getEmployees().stream()
+                    .filter(e -> e.getEmployeeNumber().equals("E1")).findFirst().get().getFullName());
         } finally {
             serverSocket.close();
             clientPool.shutdownNow();

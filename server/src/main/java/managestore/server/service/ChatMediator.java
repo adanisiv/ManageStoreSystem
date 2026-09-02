@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -46,7 +45,11 @@ public class ChatMediator {
     private final Map<String, Employee> connected = new LinkedHashMap<>();
     private final Set<String> busyEmployeeNumbers = new LinkedHashSet<>();
     private final Map<String, ChatSession> sessionByEmployeeNumber = new LinkedHashMap<>();
-    private final Map<String, BlockingQueue<ChatRequest>> pendingByBranch = new ConcurrentHashMap<>();
+    // LinkedHashMap, not ConcurrentHashMap: a disconnected/branchless (e.g. ADMIN) chat target
+    // resolves to a null branchId, and ConcurrentHashMap throws NullPointerException on any
+    // operation with a null key — plain HashMap accepts it fine, and thread-safety is already
+    // handled by every access happening inside a `synchronized` method on this instance.
+    private final Map<String, BlockingQueue<ChatRequest>> pendingByBranch = new LinkedHashMap<>();
 
     public synchronized void register(Employee employee, ChatEndpoint endpoint) {
         connected.put(employee.getEmployeeNumber(), employee);
@@ -89,15 +92,25 @@ public class ChatMediator {
         }
     }
 
-    public synchronized void joinChat(String shiftManagerEmployeeNumber, String targetEmployeeNumber) {
+    /**
+     * @return true if the shift manager actually joined. False (with nothing changed) if the
+     *     target isn't in an active session, or the shift manager is already busy in a
+     *     <em>different</em> one — without that second guard, joining a second session while
+     *     still in a first would overwrite {@code sessionByEmployeeNumber}'s entry for the shift
+     *     manager to point at the new session while the old session's participant list still
+     *     lists them: ending the old session would then wrongly delete the shift manager's real,
+     *     current mapping to the new one and tell their client the wrong chat ended.
+     */
+    public synchronized boolean joinChat(String shiftManagerEmployeeNumber, String targetEmployeeNumber) {
         ChatSession session = sessionByEmployeeNumber.get(targetEmployeeNumber);
-        if (session == null) {
-            return;
+        if (session == null || isBusy(shiftManagerEmployeeNumber)) {
+            return false;
         }
         session.addParticipant(shiftManagerEmployeeNumber);
         busyEmployeeNumbers.add(shiftManagerEmployeeNumber);
         sessionByEmployeeNumber.put(shiftManagerEmployeeNumber, session);
         broadcastSessionStarted(session);
+        return true;
     }
 
     public synchronized void sendMessage(String sessionEmployeeNumber, String text) {

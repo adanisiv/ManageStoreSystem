@@ -74,7 +74,7 @@ class EmployeeAndLogIntegrationTest {
              MessageChannel sellerChannel = loginAs(port, "regularSeller")) {
 
             adminChannel.send(Message.of(gson, MessageType.EMPLOYEE_ADD_REQUEST,
-                    new EmployeeAddRequest("NEW1", "New Hire", "3", "050-3", "ACC-3", "BRANCH-1",
+                    new EmployeeAddRequest("NEW1", "New Hire", "204812077", "050-1234567", "ACC-3", "BRANCH-1",
                             "CASHIER", "newhire", "secret123")));
             EmployeeAddResponse addResponse = adminChannel.receive().readPayload(gson, EmployeeAddResponse.class);
             assertTrue(addResponse.isSuccess(), "admin should be able to add an employee");

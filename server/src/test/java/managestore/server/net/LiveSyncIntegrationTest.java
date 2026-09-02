@@ -91,7 +91,7 @@ class LiveSyncIntegrationTest {
             // itself) gets this broadcast too — drain it from both before moving on, so it doesn't
             // race with the branch-scoped inventory push read further down.
             bystanderChannel.send(Message.of(gson, MessageType.CUSTOMER_ADD_REQUEST,
-                    new CustomerAddRequest("999", "Noa Levi", "050-9", "VIP")));
+                    new CustomerAddRequest("309825149", "Noa Levi", "050-1234567", "VIP")));
             CustomerUpdateNotice customerNoticeOnSeller =
                     sellerChannel.receive().readPayload(gson, CustomerUpdateNotice.class);
             CustomerUpdateNotice customerNoticeOnCashier =
@@ -104,7 +104,7 @@ class LiveSyncIntegrationTest {
             // actor) and sellerChannel (same branch) are subscribed to Branch B1's Inventory, so
             // only they receive this push — bystanderChannel has no branch and never subscribed.
             cashierChannel.send(Message.of(gson, MessageType.PURCHASE_REQUEST,
-                    new PurchaseRequest("SKU-1", 2, "999")));
+                    new PurchaseRequest("SKU-1", 2, "309825149")));
 
             // Stock is decremented (and observers notified) INSIDE the purchase call, before the
             // explicit PURCHASE_RESPONSE is sent — so even the actor (cashier) sees the new stock

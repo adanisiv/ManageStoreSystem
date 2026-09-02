@@ -45,6 +45,8 @@ import managestore.common.protocol.RestockResponse;
 import managestore.common.protocol.StockEntry;
 import managestore.server.service.ChatEndpoint;
 import managestore.server.service.LogManager;
+import managestore.server.service.PersonalIdValidator;
+import managestore.server.service.PhoneValidator;
 import managestore.server.service.SessionManager;
 
 import java.io.IOException;
@@ -349,6 +351,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
         CustomerAddRequest request = message.readPayload(context.getGson(), CustomerAddRequest.class);
         try {
+            requireValid(request.getFullName(), "Full name");
+            requireValidPersonalId(request.getPersonalId());
+            requireValidPhone(request.getPhone());
             CustomerType type = CustomerType.valueOf(request.getCustomerType());
             Customer customer = CustomerFactory.create(type, request.getPersonalId(), request.getFullName(), request.getPhone());
             context.getStoreChain().getCustomerDirectory().add(customer);
@@ -401,6 +406,13 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
         EmployeeAddRequest request = message.readPayload(context.getGson(), EmployeeAddRequest.class);
         try {
+            requireValid(request.getEmployeeNumber(), "Employee #");
+            requireValid(request.getFullName(), "Full name");
+            requireValidPersonalId(request.getPersonalId());
+            requireValidPhone(request.getPhone());
+            requireValid(request.getAccountNumber(), "Account #");
+            requireValid(request.getBranchId(), "Branch");
+            requireValid(request.getUsername(), "Username");
             Role role = Role.valueOf(request.getRole());
             Employee employee = new Employee(request.getEmployeeNumber(), request.getFullName(), request.getPersonalId(),
                     request.getPhone(), request.getAccountNumber(), request.getBranchId(), role);
@@ -529,5 +541,27 @@ public class ClientHandler implements Runnable, ChatEndpoint {
 
     private void sendError(String message) {
         channel.send(Message.of(context.getGson(), MessageType.ERROR, new ErrorMessage(message)));
+    }
+
+    /** Input validation for the Employee/Customer add-request handlers, thrown as {@link IllegalArgumentException}
+     *  so it flows into the same catch block each handler already has for reporting a rejected request. */
+    private void requireValid(String value, String fieldName) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(fieldName + " is required");
+        }
+    }
+
+    private void requireValidPersonalId(String personalId) {
+        String reason = PersonalIdValidator.validate(personalId);
+        if (reason != null) {
+            throw new IllegalArgumentException(reason);
+        }
+    }
+
+    private void requireValidPhone(String phone) {
+        String reason = PhoneValidator.validate(phone);
+        if (reason != null) {
+            throw new IllegalArgumentException(reason);
+        }
     }
 }

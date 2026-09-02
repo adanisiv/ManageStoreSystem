@@ -90,7 +90,7 @@ class LoggingCoverageIntegrationTest {
 
             // 10.b — registering a customer through the real CUSTOMER_ADD_REQUEST path.
             adminChannel.send(Message.of(gson, MessageType.CUSTOMER_ADD_REQUEST,
-                    new CustomerAddRequest("999999999", "Noa Levi", "050-9", "VIP")));
+                    new CustomerAddRequest("456073923", "Noa Levi", "050-1234567", "VIP")));
             // CustomerDirectory is network-wide, so both connected clients get the live broadcast;
             // drain it from both before moving on so it doesn't race with what's read next.
             adminChannel.receive();
@@ -99,7 +99,7 @@ class LoggingCoverageIntegrationTest {
             // 10.c (sale half) — an actual purchase through PURCHASE_REQUEST. The seller is on the
             // same branch (B1), so it gets its own INVENTORY_UPDATE push too — drain it from both
             // sides or it desyncs the chat exchange read below.
-            adminChannel.send(Message.of(gson, MessageType.PURCHASE_REQUEST, new PurchaseRequest("SKU-1", 2, "999999999")));
+            adminChannel.send(Message.of(gson, MessageType.PURCHASE_REQUEST, new PurchaseRequest("SKU-1", 2, "456073923")));
             adminChannel.receive(); // INVENTORY_UPDATE push, not the response we're checking here
             adminChannel.receive(); // PURCHASE_RESPONSE
             sellerChannel.receive(); // INVENTORY_UPDATE push on the other branch employee
@@ -123,7 +123,7 @@ class LoggingCoverageIntegrationTest {
             List<LogEventDto> events = logResponse.getEvents();
 
             assertTrue(events.stream().anyMatch(evt -> evt.getType().equals("CUSTOMER_REGISTERED")
-                            && evt.getDetails().contains("999999999")),
+                            && evt.getDetails().contains("456073923")),
                     "expected a CUSTOMER_REGISTERED entry for the customer just added");
 
             assertTrue(events.stream().anyMatch(evt -> evt.getType().equals("SALE") && evt.getDetails().contains("SKU-1")),

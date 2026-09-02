@@ -61,6 +61,19 @@ public class ChatMediator {
         connected.remove(employeeNumber);
         endpoints.remove(employeeNumber);
         busyEmployeeNumbers.remove(employeeNumber);
+        removePendingRequestsFrom(employeeNumber);
+    }
+
+    /**
+     * Without this, a disconnected employee's own still-queued request lingers in
+     * {@code pendingByBranch} forever: later, whoever at that branch next frees up gets a
+     * CHAT_FREE_NOTICE saying this (now-gone) employee is waiting to hear from them — a ghost
+     * notification for someone who isn't even connected to call back.
+     */
+    private void removePendingRequestsFrom(String employeeNumber) {
+        for (BlockingQueue<ChatRequest> queue : pendingByBranch.values()) {
+            queue.removeIf(request -> request.getFromEmployeeNumber().equals(employeeNumber));
+        }
     }
 
     public synchronized boolean isBusy(String employeeNumber) {
@@ -100,10 +113,22 @@ public class ChatMediator {
      *     manager to point at the new session while the old session's participant list still
      *     lists them: ending the old session would then wrongly delete the shift manager's real,
      *     current mapping to the new one and tell their client the wrong chat ended.
+     *
+     *     <p>Re-joining the exact session the shift manager is already in (e.g. a double click on
+     *     "Join") is a harmless no-op that returns true, not a rejection — {@code isBusy} alone
+     *     can't tell "already in this one" apart from "busy in a different one", so that has to be
+     *     checked first, by reference: every session lives as exactly one {@link ChatSession}
+     *     instance shared by every participant's map entry, never copied.
      */
     public synchronized boolean joinChat(String shiftManagerEmployeeNumber, String targetEmployeeNumber) {
         ChatSession session = sessionByEmployeeNumber.get(targetEmployeeNumber);
-        if (session == null || isBusy(shiftManagerEmployeeNumber)) {
+        if (session == null) {
+            return false;
+        }
+        if (sessionByEmployeeNumber.get(shiftManagerEmployeeNumber) == session) {
+            return true;
+        }
+        if (isBusy(shiftManagerEmployeeNumber)) {
             return false;
         }
         session.addParticipant(shiftManagerEmployeeNumber);

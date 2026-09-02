@@ -149,6 +149,45 @@ class ChatMediatorTest {
     }
 
     @Test
+    void rejoiningTheSameSessionIsAHarmlessNoOp() {
+        // A double-click on "Join" (or a client retry) targeting a session the shift manager is
+        // already in must not be treated as "busy in a different one" — it's the same one.
+        mediator.requestChat("A", "BRANCH-2"); // A <-> B
+
+        assertTrue(mediator.joinChat("M", "B"));
+        assertTrue(mediator.joinChat("M", "A"), "M is already in A's session too — re-joining via either participant should succeed");
+        assertTrue(mediator.isBusy("M"));
+    }
+
+    @Test
+    void disconnectingRemovesTheEmployeesOwnQueuedRequestSoItCantSurfaceAsAGhostNotification() {
+        // Occupy every employee at BRANCH-2 (B, C, and M — the shift manager, who's also
+        // registered there — must be busy too, or a request would connect to them instead of
+        // queueing), then have Z queue a request for that branch, then disconnect Z.
+        mediator.requestChat("A", "BRANCH-2"); // A <-> B
+        RecordingChatEndpoint requesterD = new RecordingChatEndpoint();
+        mediator.register(employee("D", "BRANCH-1", Role.SELLER), requesterD);
+        mediator.requestDirectChat("D", "C"); // D <-> C
+        mediator.joinChat("M", "B"); // M joins A/B's session, so now B, C, and M are all busy
+        RecordingChatEndpoint requesterZ = new RecordingChatEndpoint();
+        mediator.register(employee("Z", "BRANCH-1", Role.SELLER), requesterZ);
+        mediator.requestChat("Z", "BRANCH-2"); // everyone at BRANCH-2 busy -> queues
+        assertEquals(MessageType.CHAT_QUEUED, requesterZ.lastType());
+
+        mediator.unregister("Z"); // Z closes the app / loses connection while still queued
+
+        cashierC.types.clear();
+        cashierC.payloads.clear();
+        mediator.endChat("D"); // frees C — before the fix, C would additionally get a CHAT_FREE_NOTICE about Z
+
+        // C does get its own CHAT_END here (D<->C's session ending) — that's expected and correct.
+        // What must NOT happen is a CHAT_FREE_NOTICE about Z, whose queued request should have been
+        // purged on disconnect.
+        assertFalse(cashierC.types.contains(MessageType.CHAT_FREE_NOTICE),
+                "a disconnected employee's stale queued request must not surface as a callback notification");
+    }
+
+    @Test
     void messagesAreDeliveredToEveryOtherParticipantOnly() {
         mediator.requestChat("A", "BRANCH-2"); // A <-> B
         sellerA.payloads.clear();

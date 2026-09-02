@@ -451,9 +451,17 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             return;
         }
         LogListRequest request = message.readPayload(context.getGson(), LogListRequest.class);
-        List<LogEvent> events = request.getTypeFilter() != null
-                ? LogManager.getInstance().byType(LogType.valueOf(request.getTypeFilter()))
-                : LogManager.getInstance().all();
+        List<LogEvent> events;
+        if (request.getTypeFilter() == null) {
+            events = LogManager.getInstance().all();
+        } else {
+            try {
+                events = LogManager.getInstance().byType(LogType.valueOf(request.getTypeFilter()));
+            } catch (IllegalArgumentException e) {
+                sendError("Unknown log type: " + request.getTypeFilter());
+                return;
+            }
+        }
 
         List<LogEventDto> dtos = new ArrayList<>();
         for (LogEvent event : events) {

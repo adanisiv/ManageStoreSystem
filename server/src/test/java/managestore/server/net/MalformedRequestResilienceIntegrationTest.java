@@ -5,6 +5,7 @@ import managestore.common.model.Employee;
 import managestore.common.model.Role;
 import managestore.common.model.StoreChain;
 import managestore.common.protocol.EmployeeListResponse;
+import managestore.common.protocol.ErrorMessage;
 import managestore.common.protocol.LogListRequest;
 import managestore.common.protocol.LoginRequest;
 import managestore.common.protocol.LoginResponse;
@@ -76,6 +77,8 @@ class MalformedRequestResilienceIntegrationTest {
             Message errorMessage = channel.receive();
             assertEquals(MessageType.ERROR, errorMessage.getType(),
                     "a malformed request should come back as an ERROR, not silently drop the connection");
+            assertTrue(errorMessage.readPayload(gson, ErrorMessage.class).getMessage().contains("NOT_A_REAL_LOG_TYPE"),
+                    "should report the specific, readable reason (an unknown log type), not a generic dispatch failure message");
 
             // The connection must still be alive and usable for a normal follow-up request.
             channel.send(Message.of(gson, MessageType.EMPLOYEE_LIST_REQUEST, new Object()));

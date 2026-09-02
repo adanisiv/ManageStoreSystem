@@ -67,12 +67,35 @@ public class LoginScreen {
 
         loginButton.setOnAction(e -> {
             statusLabel.setText("");
-            loginButton.setDisable(true);
+
+            if (usernameField.getText().trim().isEmpty() || passwordField.getText().isEmpty()) {
+                statusLabel.setText("Enter both a username and a password.");
+                return;
+            }
+            int port;
             try {
-                connection.connect(hostField.getText().trim(), Integer.parseInt(portField.getText().trim()));
+                port = Integer.parseInt(portField.getText().trim());
+            } catch (NumberFormatException ex) {
+                statusLabel.setText("Port must be a number, e.g. " + defaultPort + ".");
+                return;
+            }
+            if (hostField.getText().trim().isEmpty()) {
+                statusLabel.setText("Enter a server host, e.g. localhost.");
+                return;
+            }
+
+            loginButton.setDisable(true);
+            // A retry after a failed attempt used to call connect() again without closing the
+            // previous socket/reader thread first — connect() always opens a brand-new one, so a
+            // failed-then-retried login left a stale connection and reader thread running, both
+            // now racing the new one on the same shared `channel` field for who reads the next
+            // response.
+            connection.close();
+            try {
+                connection.connect(hostField.getText().trim(), port);
                 connection.send(MessageType.LOGIN_REQUEST,
                         new LoginRequest(usernameField.getText().trim(), passwordField.getText()));
-            } catch (IOException | NumberFormatException ex) {
+            } catch (IOException ex) {
                 loginButton.setDisable(false);
                 statusLabel.setText("Could not connect: " + ex.getMessage());
             }

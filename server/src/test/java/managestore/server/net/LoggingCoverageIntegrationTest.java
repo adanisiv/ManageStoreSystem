@@ -92,9 +92,12 @@ class LoggingCoverageIntegrationTest {
             adminChannel.send(Message.of(gson, MessageType.CUSTOMER_ADD_REQUEST,
                     new CustomerAddRequest("456073923", "Noa Levi", "050-1234567", "VIP")));
             // CustomerDirectory is network-wide, so both connected clients get the live broadcast;
-            // drain it from both before moving on so it doesn't race with what's read next.
-            adminChannel.receive();
+            // drain it from both before moving on so it doesn't race with what's read next. The
+            // requester (admin) also gets its own direct CUSTOMER_ADD_RESPONSE, sent after that
+            // broadcast — drain that too.
+            adminChannel.receive(); // CUSTOMER_UPDATE_BROADCAST
             sellerChannel.receive();
+            adminChannel.receive(); // CUSTOMER_ADD_RESPONSE
 
             // 10.c (sale half) — an actual purchase through PURCHASE_REQUEST. The seller is on the
             // same branch (B1), so it gets its own INVENTORY_UPDATE push too — drain it from both

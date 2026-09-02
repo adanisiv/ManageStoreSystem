@@ -14,6 +14,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import managestore.client.net.ServerConnection;
 import managestore.common.protocol.CustomerAddRequest;
+import managestore.common.protocol.CustomerAddResponse;
 import managestore.common.protocol.CustomerDto;
 import managestore.common.protocol.CustomerListResponse;
 import managestore.common.protocol.CustomerUpdateNotice;
@@ -75,18 +76,28 @@ public class CustomersPanel {
             rows.setAll(byPersonalId.values());
         });
 
-        // No dedicated CUSTOMER_ADD_RESPONSE exists — a successful add is confirmed by this same
-        // network-wide broadcast every client (including the one who just added it) receives, so
-        // watch for the id we just submitted to give this specific form its own success feedback.
+        // Keeps the table live for every connected employee (including other admins adding
+        // customers elsewhere), independent of whether *this* form's own submission succeeded.
         connection.on(MessageType.CUSTOMER_UPDATE_BROADCAST, message -> {
             CustomerUpdateNotice notice = message.readPayload(connection.getGson(), CustomerUpdateNotice.class);
             byPersonalId.put(notice.getCustomer().getPersonalId(), notice.getCustomer());
             rows.setAll(byPersonalId.values());
-            if (notice.isNewlyAdded() && notice.getCustomer().getPersonalId().equals(idField.getText().trim())) {
-                UiUtil.setStatus(statusLabel, true, "Added " + notice.getCustomer().getFullName() + ".");
+        });
+
+        // This form's own feedback: a direct response tied to the request it just sent, instead of
+        // inferring success by matching the broadcast above against whatever's still typed in the
+        // fields (which also had no way to represent failure at all — a rejected add, e.g. an
+        // invalid personal ID, used to only surface as a separate global popup with no visible
+        // connection back to this form).
+        connection.on(MessageType.CUSTOMER_ADD_RESPONSE, message -> {
+            CustomerAddResponse response = message.readPayload(connection.getGson(), CustomerAddResponse.class);
+            if (response.isSuccess()) {
+                UiUtil.setStatus(statusLabel, true, "Added " + nameField.getText().trim() + ".");
                 idField.clear();
                 nameField.clear();
                 phoneField.clear();
+            } else {
+                UiUtil.setStatus(statusLabel, false, "Failed: " + response.getErrorMessage());
             }
         });
 

@@ -19,6 +19,7 @@ import managestore.common.protocol.ChatJoinRequest;
 import managestore.common.protocol.ChatMessageDto;
 import managestore.common.protocol.ChatRequestDto;
 import managestore.common.protocol.CustomerAddRequest;
+import managestore.common.protocol.CustomerAddResponse;
 import managestore.common.protocol.CustomerDto;
 import managestore.common.protocol.CustomerListResponse;
 import managestore.common.protocol.CustomerUpdateNotice;
@@ -366,8 +367,21 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             context.getStoreChain().getCustomerDirectory().add(customer);
             LogManager.getInstance().log(new LogEvent(LogType.CUSTOMER_REGISTERED, loggedInEmployee.getEmployeeNumber(),
                     "Registered " + type + " customer " + customer.getPersonalId() + " (" + customer.getFullName() + ")"));
+            channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_ADD_RESPONSE, CustomerAddResponse.success()));
         } catch (IllegalArgumentException e) {
-            sendError("Could not add customer: " + e.getMessage());
+            // Previously only sendError (the global ERROR channel) reported this — CustomersPanel
+            // itself had no direct signal that its own request specifically failed, only an
+            // easy-to-miss generic popup with no connection back to the form still sitting there
+            // with the rejected input in it. A dedicated response, same as EMPLOYEE_ADD_RESPONSE,
+            // lets the form show the failure inline, right where the user is already looking.
+            channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_ADD_RESPONSE,
+                    CustomerAddResponse.failure(e.getMessage())));
+        } catch (IllegalStateException e) {
+            // CustomerDirectory.add throws this for a duplicate personal ID — a different
+            // exception type than the validators above use, but the same "tell this form
+            // specifically" fix applies.
+            channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_ADD_RESPONSE,
+                    CustomerAddResponse.failure(e.getMessage())));
         }
     }
 

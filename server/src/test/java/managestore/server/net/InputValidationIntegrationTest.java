@@ -5,10 +5,10 @@ import managestore.common.model.Employee;
 import managestore.common.model.Role;
 import managestore.common.model.StoreChain;
 import managestore.common.protocol.CustomerAddRequest;
+import managestore.common.protocol.CustomerAddResponse;
 import managestore.common.protocol.EmployeeAddRequest;
 import managestore.common.protocol.EmployeeAddResponse;
 import managestore.common.protocol.EmployeeListResponse;
-import managestore.common.protocol.ErrorMessage;
 import managestore.common.protocol.LoginRequest;
 import managestore.common.protocol.LoginResponse;
 import managestore.common.protocol.Message;
@@ -156,9 +156,21 @@ class InputValidationIntegrationTest {
             admin.send(Message.of(gson, MessageType.CUSTOMER_ADD_REQUEST,
                     new CustomerAddRequest("not-an-id", "Noa Levi", "050-1234567", "NEW")));
             Message response = admin.receive();
-            assertTrue(response.getType() == MessageType.ERROR, "an invalid personal ID should come back as an ERROR");
-            ErrorMessage error = response.readPayload(gson, ErrorMessage.class);
-            assertTrue(error.getMessage().contains("Personal ID"), "error should explain what was wrong: " + error.getMessage());
+            assertEquals(MessageType.CUSTOMER_ADD_RESPONSE, response.getType(),
+                    "an invalid personal ID should come back as a CUSTOMER_ADD_RESPONSE the form itself can react to, not just the generic ERROR channel");
+            CustomerAddResponse addResponse = response.readPayload(gson, CustomerAddResponse.class);
+            assertFalse(addResponse.isSuccess());
+            assertTrue(addResponse.getErrorMessage().contains("Personal ID"),
+                    "error should explain what was wrong: " + addResponse.getErrorMessage());
+
+            // A valid customer, on the same connection, gets back a direct success response too.
+            admin.send(Message.of(gson, MessageType.CUSTOMER_ADD_REQUEST,
+                    new CustomerAddRequest("123456782", "Noa Levi", "050-1234567", "NEW")));
+            // The requester is also subscribed to the network-wide customer directory, so the
+            // broadcast for their own addition arrives first, then the direct response.
+            admin.receive(); // CUSTOMER_UPDATE_BROADCAST
+            CustomerAddResponse accepted = admin.receive().readPayload(gson, CustomerAddResponse.class);
+            assertTrue(accepted.isSuccess(), "a valid customer should be accepted: " + accepted.getErrorMessage());
         } finally {
             serverSocket.close();
             clientPool.shutdownNow();

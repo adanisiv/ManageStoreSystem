@@ -96,6 +96,21 @@ class ReportServiceTest {
     }
 
     @Test
+    void filterValueIsCaseInsensitiveAndTrimmed() {
+        // A category like "Tops" reads as an ordinary word, not a code — someone typing "tops" or
+        // " TOPS " getting back an empty report, with no hint why, would look broken rather than
+        // like a typo.
+        // "Tops" covers both shirt sales (2 at B1, 3 at B2) = 5, matching groupsByCategory() above.
+        ReportResponse lower = reportService.generate(records, ReportScope.CATEGORY, "tops", ReportFormat.JSON);
+        assertEquals(1, lower.getLines().size());
+        assertEquals(5, lower.getTotalQuantity());
+
+        ReportResponse paddedUpper = reportService.generate(records, ReportScope.CATEGORY, "  TOPS  ", ReportFormat.JSON);
+        assertEquals(1, paddedUpper.getLines().size());
+        assertEquals(5, paddedUpper.getTotalQuantity());
+    }
+
+    @Test
     void allScopeProducesOneGrandTotalLine() {
         ReportResponse response = reportService.generate(records, ReportScope.ALL, null, ReportFormat.JSON);
 

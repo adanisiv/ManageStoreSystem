@@ -84,13 +84,20 @@ public class ReportService {
         return filtered;
     }
 
+    /**
+     * Case-insensitive on purpose: a branch id/SKU is effectively a code (unique regardless of
+     * case), but a category name like "Tops" reads as an ordinary word — someone typing "tops" in
+     * the Reports filter field getting back an empty table, with no hint why, looks like the
+     * report is broken rather than like a typo.
+     */
     private List<SalesRecord> filter(List<SalesRecord> records, ReportScope scope, String filterValue) {
         if (filterValue == null) {
             return records;
         }
+        String trimmed = filterValue.trim();
         List<SalesRecord> filtered = new ArrayList<>();
         for (SalesRecord record : records) {
-            if (filterValue.equals(keyFor(scope, record))) {
+            if (trimmed.equalsIgnoreCase(keyFor(scope, record))) {
                 filtered.add(record);
             }
         }

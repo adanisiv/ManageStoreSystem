@@ -33,6 +33,18 @@ class InventoryTest {
     }
 
     @Test
+    void addingStockThatWouldOverflowThrowsInsteadOfWrappingToNegative() {
+        Inventory inventory = new Inventory();
+        inventory.addStock(shirt, Integer.MAX_VALUE - 1);
+
+        // Plain `int` addition here would silently wrap around to a large negative number —
+        // nonsensical stock — instead of failing loudly. The protocol places no upper bound on
+        // what a client can send in a RestockRequest, so the server has to guard this itself.
+        assertThrows(IllegalArgumentException.class, () -> inventory.addStock(shirt, 10));
+        assertEquals(Integer.MAX_VALUE - 1, inventory.getQuantity(shirt), "the rejected call must not have changed the stock");
+    }
+
+    @Test
     void observersAreNotifiedOnEveryChange() {
         Inventory inventory = new Inventory();
         List<Integer> notifiedQuantities = new ArrayList<>();

@@ -37,7 +37,18 @@ public class Inventory {
 
     public synchronized void addStock(Product product, int quantity) {
         requirePositive(quantity);
-        int updated = getQuantity(product) + quantity;
+        int updated;
+        try {
+            updated = Math.addExact(getQuantity(product), quantity);
+        } catch (ArithmeticException e) {
+            // Plain int addition would silently wrap around to a negative "quantity" instead of
+            // failing — Math.addExact turns that into a real, catchable error. Not reachable
+            // through the client UI today (the Restock spinner caps at 1000), but the protocol
+            // itself places no upper bound on what a client sends, and this server should not
+            // trust that blindly.
+            throw new IllegalArgumentException(
+                    "Restocking " + quantity + " of " + product.getSku() + " would overflow past Integer.MAX_VALUE");
+        }
         stock.put(product, updated);
         notifyObservers(product, updated);
     }

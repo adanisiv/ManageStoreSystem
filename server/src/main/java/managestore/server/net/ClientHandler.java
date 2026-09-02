@@ -52,6 +52,7 @@ import managestore.server.service.SessionManager;
 import java.io.IOException;
 import java.net.Socket;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -469,7 +470,13 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             return;
         }
         ReportRequest request = message.readPayload(context.getGson(), ReportRequest.class);
-        LocalDate day = request.getDay() != null ? LocalDate.parse(request.getDay()) : null;
+        LocalDate day;
+        try {
+            day = request.getDay() != null ? LocalDate.parse(request.getDay()) : null;
+        } catch (DateTimeParseException e) {
+            sendError("Invalid report date: " + request.getDay());
+            return;
+        }
         ReportResponse response = context.getReportService().generate(context.getSalesRecordRepository().all(),
                 request.getScope(), request.getFilterValue(), request.getFormat(), day);
         channel.send(Message.of(context.getGson(), MessageType.REPORT_RESPONSE, response));

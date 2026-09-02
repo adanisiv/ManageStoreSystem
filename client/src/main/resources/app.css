@@ -145,6 +145,21 @@
     -fx-table-cell-border-color: transparent;
 }
 
+/* InventoryPanel: a product below the low-stock threshold — a glance at the color says "needs
+   restocking soon" without having to read every quantity number in the table. */
+.table-row-cell:low-stock {
+    -fx-background-color: #fff7ed;
+}
+
+.table-row-cell:low-stock .table-cell {
+    -fx-text-fill: #b45309;
+    -fx-font-weight: bold;
+}
+
+.table-row-cell:low-stock:selected {
+    -fx-background-color: derive(#b45309, 70%);
+}
+
 .text-area {
     -fx-background-color: white;
     -fx-border-color: #e5e7eb;

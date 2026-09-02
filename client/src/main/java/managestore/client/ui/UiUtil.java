@@ -9,7 +9,7 @@ final class UiUtil {
     }
 
     static void setStatus(Label label, boolean success, String text) {
-        label.setText(text);
+        label.setText((success ? "✅ " : "⚠️ ") + text);
         label.getStyleClass().removeAll("success", "error");
         label.getStyleClass().add(success ? "success" : "error");
     }

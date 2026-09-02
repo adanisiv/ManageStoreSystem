@@ -1,13 +1,16 @@
 package managestore.client.ui;
 
+import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.css.PseudoClass;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.BorderPane;
@@ -26,8 +29,11 @@ import managestore.common.protocol.RestockRequest;
 import managestore.common.protocol.RestockResponse;
 import managestore.common.protocol.StockEntry;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Shows this employee's branch inventory and lets them both sell a product
@@ -44,6 +50,9 @@ import java.util.Map;
  */
 public class InventoryPanel {
 
+    private static final int LOW_STOCK_THRESHOLD = 10;
+    private static final PseudoClass LOW_STOCK = PseudoClass.getPseudoClass("low-stock");
+
     private final ServerConnection connection;
     private final Map<String, StockEntry> bySku = new LinkedHashMap<>();
     private final ObservableList<StockEntry> rows = FXCollections.observableArrayList();
@@ -58,24 +67,33 @@ public class InventoryPanel {
         TableView<StockEntry> table = new TableView<>(rows);
         table.getColumns().add(column("SKU", "sku"));
         table.getColumns().add(column("Name", "name"));
-        table.getColumns().add(column("Category", "category"));
-        table.getColumns().add(column("Price", "price"));
+        table.getColumns().add(categoryColumn());
+        table.getColumns().add(priceColumn());
         table.getColumns().add(column("Quantity", "quantity"));
+        // A row this low reads as "needs restocking soon" at a glance, without having to scan
+        // the number in every row — same idea as a low-battery or low-fuel indicator.
+        table.setRowFactory(tv -> new TableRow<StockEntry>() {
+            @Override
+            protected void updateItem(StockEntry item, boolean empty) {
+                super.updateItem(item, empty);
+                pseudoClassStateChanged(LOW_STOCK, !empty && item != null && item.getQuantity() < LOW_STOCK_THRESHOLD);
+            }
+        });
 
         ChoiceBox<StockEntry> productChoice = new ChoiceBox<>(rows);
-        productChoice.setPrefWidth(220);
+        productChoice.setPrefWidth(240);
         ChoiceBox<CustomerDto> customerChoice = new ChoiceBox<>(customerRows);
         customerChoice.setPrefWidth(200);
         Spinner<Integer> quantitySpinner = new Spinner<>(1, 1000, 1);
-        Button sellButton = new Button("Sell");
-        Button restockButton = new Button("Restock (purchase)");
+        Button sellButton = new Button("🛒 Sell");
+        Button restockButton = new Button("📦 Restock (purchase)");
         Label statusLabel = new Label();
 
         sellButton.setOnAction(e -> {
             StockEntry product = productChoice.getValue();
             CustomerDto customer = customerChoice.getValue();
             if (product == null || customer == null) {
-                statusLabel.setText("Pick a product and a customer first.");
+                UiUtil.setStatus(statusLabel, false, "Pick a product and a customer first.");
                 return;
             }
             connection.send(MessageType.PURCHASE_REQUEST,
@@ -85,7 +103,7 @@ public class InventoryPanel {
         restockButton.setOnAction(e -> {
             StockEntry product = productChoice.getValue();
             if (product == null) {
-                statusLabel.setText("Pick a product first.");
+                UiUtil.setStatus(statusLabel, false, "Pick a product first.");
                 return;
             }
             connection.send(MessageType.RESTOCK_REQUEST, new RestockRequest(product.getSku(), quantitySpinner.getValue()));
@@ -106,13 +124,13 @@ public class InventoryPanel {
             for (StockEntry entry : response.getItems()) {
                 bySku.put(entry.getSku(), entry);
             }
-            rows.setAll(bySku.values());
+            refreshRowsKeepingSelection(rows, bySku.values(), productChoice, StockEntry::getSku);
         });
 
         connection.on(MessageType.INVENTORY_UPDATE, message -> {
             InventoryUpdateNotice notice = message.readPayload(connection.getGson(), InventoryUpdateNotice.class);
             bySku.put(notice.getEntry().getSku(), notice.getEntry());
-            rows.setAll(bySku.values());
+            refreshRowsKeepingSelection(rows, bySku.values(), productChoice, StockEntry::getSku);
         });
 
         connection.on(MessageType.CUSTOMER_LIST_RESPONSE, message -> {
@@ -121,19 +139,19 @@ public class InventoryPanel {
             for (CustomerDto customer : response.getCustomers()) {
                 customersById.put(customer.getPersonalId(), customer);
             }
-            customerRows.setAll(customersById.values());
+            refreshRowsKeepingSelection(customerRows, customersById.values(), customerChoice, CustomerDto::getPersonalId);
         });
 
         connection.on(MessageType.CUSTOMER_UPDATE_BROADCAST, message -> {
             CustomerUpdateNotice notice = message.readPayload(connection.getGson(), CustomerUpdateNotice.class);
             customersById.put(notice.getCustomer().getPersonalId(), notice.getCustomer());
-            customerRows.setAll(customersById.values());
+            refreshRowsKeepingSelection(customerRows, customersById.values(), customerChoice, CustomerDto::getPersonalId);
         });
 
         connection.on(MessageType.PURCHASE_RESPONSE, message -> {
             PurchaseResponse response = message.readPayload(connection.getGson(), PurchaseResponse.class);
             UiUtil.setStatus(statusLabel, response.isSuccess(), response.isSuccess()
-                    ? "Sold — charged " + response.getAmountCharged() + " (list " + response.getListTotal() + ")"
+                    ? "Sold — charged " + formatCurrency(response.getAmountCharged()) + " (list " + formatCurrency(response.getListTotal()) + ")"
                     : "Sale failed: " + response.getErrorMessage());
         });
 
@@ -151,6 +169,66 @@ public class InventoryPanel {
         pane.setCenter(table);
         pane.setBottom(new VBox(sellBar, statusLabel));
         return pane;
+    }
+
+    /**
+     * Replaces a ChoiceBox's backing list wholesale (as every snapshot/push here does) while
+     * keeping its current selection — otherwise every push, including the one confirming the
+     * user's own just-completed sale/restock, silently clears whatever they had picked: the new
+     * list holds brand-new {@link StockEntry}/{@link CustomerDto} instances (plain data classes,
+     * no {@code equals()} override), so the ChoiceBox's old selected reference is never found in
+     * it and the selection collapses to nothing. Re-selects by the stable key (SKU / personal ID)
+     * instead of relying on object identity surviving the refresh.
+     */
+    private <T> void refreshRowsKeepingSelection(ObservableList<T> rows, Collection<T> newValues,
+                                                  ChoiceBox<T> choice, Function<T, String> keyOf) {
+        T selected = choice.getValue();
+        String selectedKey = selected != null ? keyOf.apply(selected) : null;
+        rows.setAll(newValues);
+        if (selectedKey != null) {
+            for (T candidate : rows) {
+                if (selectedKey.equals(keyOf.apply(candidate))) {
+                    choice.getSelectionModel().select(candidate);
+                    break;
+                }
+            }
+        }
+    }
+
+    private TableColumn<StockEntry, ?> categoryColumn() {
+        TableColumn<StockEntry, String> col = new TableColumn<>("Category");
+        col.setCellValueFactory(data -> new SimpleStringProperty(categoryIcon(data.getValue().getCategory()) + data.getValue().getCategory()));
+        return col;
+    }
+
+    private static String categoryIcon(String category) {
+        if (category == null) {
+            return "";
+        }
+        switch (category) {
+            case "Tops":
+                return "👕 ";
+            case "Bottoms":
+                return "👖 ";
+            case "Footwear":
+                return "👟 ";
+            case "Outerwear":
+                return "🧥 ";
+            case "Accessories":
+                return "🧢 ";
+            default:
+                return "";
+        }
+    }
+
+    private TableColumn<StockEntry, ?> priceColumn() {
+        TableColumn<StockEntry, String> col = new TableColumn<>("Price");
+        col.setCellValueFactory(data -> new SimpleStringProperty(formatCurrency(data.getValue().getPrice())));
+        return col;
+    }
+
+    private static String formatCurrency(double amount) {
+        return String.format(Locale.US, "%.2f", amount);
     }
 
     private TableColumn<StockEntry, ?> column(String title, String property) {

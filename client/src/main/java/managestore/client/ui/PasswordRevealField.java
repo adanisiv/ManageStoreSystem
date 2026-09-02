@@ -8,6 +8,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
 
@@ -34,9 +35,18 @@ class PasswordRevealField {
         plainField.textProperty().bindBidirectional(passwordField.textProperty());
         plainField.setManaged(false);
         plainField.setVisible(false);
+        // Both need an explicit unbounded max width, or the StackPane (and everything else here)
+        // only ever sizes to the fields' own preferred width instead of filling whatever room the
+        // surrounding layout actually gives it — the same "fillWidth" behavior a plain TextField
+        // gets for free when placed directly in a GridPane/HBox cell.
+        passwordField.setMaxWidth(Double.MAX_VALUE);
+        plainField.setMaxWidth(Double.MAX_VALUE);
 
         StackPane fieldStack = new StackPane(passwordField, plainField);
-        toggleButton.getStyleClass().add("secondary");
+        fieldStack.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(fieldStack, Priority.ALWAYS);
+
+        toggleButton.getStyleClass().add("icon-toggle");
         toggleButton.setFocusTraversable(false);
         toggleButton.setOnAction(e -> {
             if (plainField.isVisible()) {
@@ -48,6 +58,7 @@ class PasswordRevealField {
         hideAfterDelay.setOnFinished(e -> hide());
 
         root = new HBox(4, fieldStack, toggleButton);
+        root.setMaxWidth(Double.MAX_VALUE);
     }
 
     private void reveal() {

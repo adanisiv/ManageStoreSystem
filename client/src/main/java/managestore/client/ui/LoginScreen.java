@@ -1,5 +1,6 @@
 package managestore.client.ui;
 
+import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -7,7 +8,10 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
@@ -37,13 +41,27 @@ public class LoginScreen {
         PasswordRevealField passwordField = new PasswordRevealField();
         Label statusLabel = new Label();
         statusLabel.getStyleClass().addAll("status-label", "error");
+        statusLabel.setWrapText(true);
         Button loginButton = new Button("Log In");
+        loginButton.setId("login-button");
+        loginButton.setMaxWidth(Double.MAX_VALUE);
         loginButton.setDefaultButton(true);
 
         GridPane grid = new GridPane();
         grid.setAlignment(Pos.CENTER);
         grid.setHgap(12);
         grid.setVgap(12);
+        // Without explicit column constraints, GridPane is free to shrink the label column below
+        // its preferred width whenever the row column is under space pressure (e.g. the password
+        // row, once it holds the wider eye-toggle control) — the labels then render as "..." with
+        // no visible text at all, rather than just being a bit cramped.
+        ColumnConstraints labelColumn = new ColumnConstraints();
+        labelColumn.setMinWidth(Region.USE_PREF_SIZE);
+        labelColumn.setHalignment(HPos.RIGHT);
+        ColumnConstraints fieldColumn = new ColumnConstraints();
+        fieldColumn.setHgrow(Priority.ALWAYS);
+        fieldColumn.setFillWidth(true);
+        grid.getColumnConstraints().addAll(labelColumn, fieldColumn);
 
         grid.add(new Label("Server host:"), 0, 0);
         grid.add(hostField, 1, 0);
@@ -100,21 +118,34 @@ public class LoginScreen {
             }
         });
 
+        Label logo = new Label("🏬");
+        logo.setId("login-logo");
         Label title = new Label("ManageStoreSystem");
         title.setId("login-title");
         Label subtitle = new Label("Store chain management — sign in");
         subtitle.setId("login-subtitle");
 
-        VBox card = new VBox(16, title, subtitle, grid, loginButton, statusLabel);
+        // Only meaningful against DemoServerLauncher (ServerMain's real, graded flow starts with
+        // an empty network and no accounts at all) — worded as a hint, not a claim, so it's not
+        // misleading when pointed at a plain ServerMain instance.
+        Label demoHint = new Label(
+                "Trying the demo server? admin/Admin1234 · seller1/Seller123 · mgr1/Manager123 · seller2/Seller123");
+        demoHint.setId("login-demo-hint");
+        demoHint.setWrapText(true);
+        demoHint.setAlignment(Pos.CENTER);
+        demoHint.setMaxWidth(340);
+
+        VBox card = new VBox(14, logo, title, subtitle, grid, loginButton, statusLabel, demoHint);
         card.setId("login-card");
         card.setAlignment(Pos.CENTER);
         card.setPadding(new Insets(10));
         VBox.setMargin(loginButton, new Insets(6, 0, 0, 0));
+        VBox.setMargin(demoHint, new Insets(6, 0, 0, 0));
 
         StackPane backdrop = new StackPane(card);
         backdrop.setId("login-backdrop");
 
-        Scene scene = new Scene(backdrop, 460, 520);
+        Scene scene = new Scene(backdrop, 500, 590);
         scene.getStylesheets().add(getClass().getResource("/app.css").toExternalForm());
         stage.setTitle("ManageStoreSystem — Login");
         stage.setScene(scene);

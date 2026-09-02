@@ -200,6 +200,10 @@
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 24, 0, 0, 8);
 }
 
+#login-logo {
+    -fx-font-size: 34px;
+}
+
 #login-title {
     -fx-font-size: 20px;
     -fx-font-weight: bold;
@@ -211,6 +215,34 @@
     -fx-text-fill: -muted;
 }
 
-#login-card .button {
+#login-demo-hint {
+    -fx-font-size: 11px;
+    -fx-text-fill: -muted;
+    -fx-text-alignment: center;
+}
+
+/* Scoped to the login button specifically (by id), not every button in the card — every
+   javafx.scene.control.Button already carries the base ".button" style class automatically, so
+   an id-less ".button" rule here would also stretch the compact icon-toggle button (see
+   PasswordRevealField) to this same width. */
+#login-button {
     -fx-pref-width: 300px;
+}
+
+/* Compact icon-only button (the password reveal toggle) — deliberately not sized or padded like
+   a normal .button, which would make a one-glyph label look like an oversized, empty button. */
+.icon-toggle {
+    -fx-background-color: white;
+    -fx-border-color: #d0d5dd;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 4px 10px;
+    -fx-min-width: 0;
+    -fx-pref-width: 36px;
+    -fx-effect: none;
+    -fx-cursor: hand;
+}
+
+.icon-toggle:hover {
+    -fx-border-color: -accent;
 }

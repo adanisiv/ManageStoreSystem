@@ -498,10 +498,11 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
         ChatRequestDto request = message.readPayload(context.getGson(), ChatRequestDto.class);
         String myNumber = loggedInEmployee.getEmployeeNumber();
-        if (request.getTargetEmployeeNumber() != null) {
-            context.getChatMediator().requestDirectChat(myNumber, request.getTargetEmployeeNumber());
-        } else {
-            context.getChatMediator().requestChat(myNumber, request.getTargetBranchId());
+        boolean accepted = request.getTargetEmployeeNumber() != null
+                ? context.getChatMediator().requestDirectChat(myNumber, request.getTargetEmployeeNumber())
+                : context.getChatMediator().requestChat(myNumber, request.getTargetBranchId());
+        if (!accepted) {
+            sendError("You're already in an active chat — end it before starting another.");
         }
     }
 

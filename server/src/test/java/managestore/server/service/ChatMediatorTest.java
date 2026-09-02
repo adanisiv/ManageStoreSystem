@@ -58,6 +58,42 @@ class ChatMediatorTest {
     }
 
     @Test
+    void requestChatRefusesARequesterAlreadyBusyInAnotherSession() {
+        // The most ordinary way to hit this: click "Request Chat", then click it again before
+        // ending the first one. Without the guard, the second call would silently repoint A's
+        // sessionByEmployeeNumber entry to the new session while the first session's participant
+        // list still lists A — corrupting both, exactly like the unguarded joinChat bug did.
+        assertTrue(mediator.requestChat("A", "BRANCH-2")); // A <-> B
+
+        assertFalse(mediator.requestChat("A", "BRANCH-2"), "A is already busy — a second request must be refused, not silently succeed");
+
+        // A's real session (with B) must be completely unaffected by the refused second attempt.
+        mediator.endChat("A");
+        assertEquals(MessageType.CHAT_END, sellerB.lastType());
+        assertFalse(mediator.isBusy("A"));
+        assertFalse(mediator.isBusy("B"));
+    }
+
+    @Test
+    void requestDirectChatToTheExactPersonAlreadyChattingWithIsAHarmlessNoOp() {
+        // E.g. a stale "Call back" button clicked again after the callback already connected.
+        assertTrue(mediator.requestDirectChat("A", "B")); // A <-> B
+
+        assertTrue(mediator.requestDirectChat("A", "B"), "re-requesting the exact person already being chatted with should succeed as a no-op");
+        assertTrue(mediator.isBusy("A"));
+        assertTrue(mediator.isBusy("B"));
+    }
+
+    @Test
+    void requestDirectChatRefusesARequesterBusyWithSomeoneElse() {
+        assertTrue(mediator.requestChat("A", "BRANCH-2")); // A <-> B
+        RecordingChatEndpoint requesterD = new RecordingChatEndpoint();
+        mediator.register(employee("D", "BRANCH-1", Role.SELLER), requesterD);
+
+        assertFalse(mediator.requestDirectChat("A", "D"), "A is already busy with B — calling a third party must be refused");
+    }
+
+    @Test
     void requestChatQueuesWhenNobodyIsFreeAtTargetBranch() {
         RecordingChatEndpoint requester = new RecordingChatEndpoint();
         mediator.register(employee("Z", "BRANCH-1", Role.SELLER), requester);

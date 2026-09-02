@@ -65,7 +65,10 @@ public class ReportsPanel {
         TableView<ReportLineDto> table = new TableView<>();
         table.getColumns().add(column("Label", "label"));
         table.getColumns().add(column("Quantity Sold", "quantitySold"));
-        table.getColumns().add(column("Revenue", "revenue"));
+        table.getColumns().add(revenueColumn());
+        // An empty result (no sales matched the filter) otherwise just looks like a blank,
+        // possibly-broken table with no indication anything happened.
+        table.setPlaceholder(new Label("No sales match this filter."));
 
         HBox controls = new HBox(8, scopeChoice, filterField, dayPicker, formatChoice, generateButton, saveWordButton);
         controls.getStyleClass().add("toolbar");
@@ -101,7 +104,8 @@ public class ReportsPanel {
             ReportResponse response = message.readPayload(connection.getGson(), ReportResponse.class);
             titleLabel.setText(response.getTitle());
             table.getItems().setAll(response.getLines());
-            totalsLabel.setText("Total quantity: " + response.getTotalQuantity() + "   Total revenue: " + response.getTotalRevenue());
+            totalsLabel.setText("Total quantity: " + response.getTotalQuantity()
+                    + "   Total revenue: " + formatCurrency(response.getTotalRevenue()));
             if (response.getWordFileBase64() != null) {
                 pendingWordFile = Base64.getDecoder().decode(response.getWordFileBase64());
                 saveWordButton.setDisable(false);
@@ -131,6 +135,18 @@ public class ReportsPanel {
             default:
                 return "(no filter for ALL — grand total)";
         }
+    }
+
+    /** Revenue is a plain double; PropertyValueFactory would render it via Double.toString (e.g. "245.0"). */
+    private TableColumn<ReportLineDto, ?> revenueColumn() {
+        TableColumn<ReportLineDto, String> col = new TableColumn<>("Revenue");
+        col.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
+                formatCurrency(data.getValue().getRevenue())));
+        return col;
+    }
+
+    private String formatCurrency(double amount) {
+        return String.format(java.util.Locale.US, "%.2f", amount);
     }
 
     private TableColumn<ReportLineDto, ?> column(String title, String property) {

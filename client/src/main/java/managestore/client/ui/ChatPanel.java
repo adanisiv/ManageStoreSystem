@@ -84,6 +84,8 @@ public class ChatPanel {
             }
         });
 
+        messageField.setOnAction(e -> sendButton.fire());
+
         endButton.setOnAction(e -> connection.send(MessageType.CHAT_END, new ChatEndNotice(activeSessionId)));
 
         joinButton.setOnAction(e -> connection.send(MessageType.CHAT_JOIN_REQUEST,
@@ -92,15 +94,24 @@ public class ChatPanel {
         connection.on(MessageType.CHAT_QUEUED, message -> {
             ChatQueuedNotice notice = message.readPayload(connection.getGson(), ChatQueuedNotice.class);
             statusLabel.setText("Nobody free at " + notice.getTargetBranchId() + " right now — waiting in queue.");
+            statusLabel.setGraphic(null);
+            // Disabled the moment we're queued (not just once matched): otherwise clicking
+            // "Request Chat" again while already queued would submit a second, independent queue
+            // entry for the same person instead of just waiting on the first one.
+            requestButton.setDisable(true);
         });
 
         connection.on(MessageType.CHAT_STARTED, message -> {
             ChatStartedNotice notice = message.readPayload(connection.getGson(), ChatStartedNotice.class);
             activeSessionId = notice.getSessionId();
             statusLabel.setText("Chat active with: " + String.join(", ", notice.getParticipantEmployeeNumbers()));
+            // A "Call back X" button from an earlier CHAT_FREE_NOTICE would otherwise keep showing
+            // (and stay clickable) even after that exact callback already connected.
+            statusLabel.setGraphic(null);
             transcript.clear();
             sendButton.setDisable(false);
             endButton.setDisable(false);
+            requestButton.setDisable(true);
         });
 
         connection.on(MessageType.CHAT_FREE_NOTICE, message -> {
@@ -123,6 +134,7 @@ public class ChatPanel {
             statusLabel.setGraphic(null);
             sendButton.setDisable(true);
             endButton.setDisable(true);
+            requestButton.setDisable(false);
         });
 
         endButton.getStyleClass().add("secondary");

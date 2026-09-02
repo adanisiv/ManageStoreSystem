@@ -80,8 +80,22 @@ public class ChatMediator {
         return busyEmployeeNumbers.contains(employeeNumber);
     }
 
-    /** Employee at {@code fromEmployeeNumber} wants to talk to any free employee at {@code targetBranchId}. */
-    public synchronized void requestChat(String fromEmployeeNumber, String targetBranchId) {
+    /**
+     * Employee at {@code fromEmployeeNumber} wants to talk to any free employee at
+     * {@code targetBranchId}.
+     *
+     * @return true if the request was accepted (either matched immediately or queued). False if
+     *     {@code fromEmployeeNumber} is already busy in an active session — without this guard,
+     *     requesting a second chat while already in one would silently overwrite the requester's
+     *     {@code sessionByEmployeeNumber} entry to point at the new session while the old one's
+     *     participant list still lists them, corrupting both the same way an unguarded
+     *     {@link #joinChat} would (see that method's javadoc) — and this path is reached by simply
+     *     clicking "Request Chat" twice, not just the shift-manager join case.
+     */
+    public synchronized boolean requestChat(String fromEmployeeNumber, String targetBranchId) {
+        if (isBusy(fromEmployeeNumber)) {
+            return false;
+        }
         String freeEmployee = findFreeEmployeeAtBranch(targetBranchId, fromEmployeeNumber);
         if (freeEmployee != null) {
             startSession(fromEmployeeNumber, freeEmployee);
@@ -90,10 +104,24 @@ public class ChatMediator {
                     .offer(new ChatRequest(fromEmployeeNumber, targetBranchId));
             send(fromEmployeeNumber, MessageType.CHAT_QUEUED, new ChatQueuedNotice(targetBranchId));
         }
+        return true;
     }
 
-    /** Direct callback: {@code fromEmployeeNumber} calls a specific employee back (they must be free). */
-    public synchronized void requestDirectChat(String fromEmployeeNumber, String targetEmployeeNumber) {
+    /**
+     * Direct callback: {@code fromEmployeeNumber} calls a specific employee back (they must be
+     * free). Same busy-guard as {@link #requestChat}, with one addition: calling the exact person
+     * you're already chatting with (e.g. a stale "Call back" button clicked again after the
+     * callback already connected) is a harmless no-op, not a rejection — checked by reference,
+     * the same way {@link #joinChat} tells "already in this one" apart from "busy elsewhere".
+     *
+     * @return true if accepted (matched, queued, or already talking to exactly this person).
+     *     False if {@code fromEmployeeNumber} is busy in a genuinely different session.
+     */
+    public synchronized boolean requestDirectChat(String fromEmployeeNumber, String targetEmployeeNumber) {
+        ChatSession current = sessionByEmployeeNumber.get(fromEmployeeNumber);
+        if (current != null) {
+            return current == sessionByEmployeeNumber.get(targetEmployeeNumber);
+        }
         if (connected.containsKey(targetEmployeeNumber) && !isBusy(targetEmployeeNumber)) {
             startSession(fromEmployeeNumber, targetEmployeeNumber);
         } else {
@@ -103,6 +131,7 @@ public class ChatMediator {
                     .offer(new ChatRequest(fromEmployeeNumber, branchId));
             send(fromEmployeeNumber, MessageType.CHAT_QUEUED, new ChatQueuedNotice(branchId));
         }
+        return true;
     }
 
     /**

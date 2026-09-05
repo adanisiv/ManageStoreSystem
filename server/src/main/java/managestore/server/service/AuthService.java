@@ -1,5 +1,8 @@
 package managestore.server.service;
 
+import managestore.common.exception.DuplicateUsernameException;
+import managestore.common.exception.ValidationException;
+
 import managestore.common.model.Employee;
 import managestore.common.protocol.LoginResponse;
 import managestore.server.model.Account;
@@ -52,10 +55,10 @@ public class AuthService {
     public void createAccount(Employee employee, String username, String rawPassword) {
         String policyViolation = passwordPolicy.validate(rawPassword);
         if (policyViolation != null) {
-            throw new IllegalArgumentException(policyViolation);
+            throw new ValidationException("Password", policyViolation);
         }
         if (accountRepository.findByUsername(username).isPresent()) {
-            throw new IllegalArgumentException("Username already taken: " + username);
+            throw new DuplicateUsernameException(username);
         }
         String salt = PasswordHasher.newSalt();
         String hash = PasswordHasher.hash(rawPassword, salt);

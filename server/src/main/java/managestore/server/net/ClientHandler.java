@@ -1,5 +1,8 @@
 package managestore.server.net;
 
+import managestore.common.exception.DuplicateEmployeeException;
+import managestore.common.exception.ValidationException;
+
 import managestore.common.model.Branch;
 import managestore.common.model.Customer;
 import managestore.common.model.CustomerDirectoryObserver;
@@ -439,7 +442,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             // overwrite that employee's profile (JsonFileEmployeeRepository.save is a keyed
             // upsert), while a second, unrelated account could still end up pointing at it.
             if (context.getEmployeeRepository().findByEmployeeNumber(request.getEmployeeNumber()).isPresent()) {
-                throw new IllegalArgumentException("Employee number already exists: " + request.getEmployeeNumber());
+                throw new DuplicateEmployeeException(request.getEmployeeNumber());
             }
             Role role = Role.valueOf(request.getRole());
             Employee employee = new Employee(request.getEmployeeNumber(), request.getFullName(), request.getPersonalId(),
@@ -637,25 +640,26 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         channel.send(Message.of(context.getGson(), MessageType.ERROR, new ErrorMessage(message)));
     }
 
-    /** Input validation for the Employee/Customer add-request handlers, thrown as {@link IllegalArgumentException}
-     *  so it flows into the same catch block each handler already has for reporting a rejected request. */
+    /** Input validation for the Employee/Customer add-request handlers. {@link ValidationException} is an
+     *  {@link IllegalArgumentException}, so it still flows into the same catch block each handler already has
+     *  for reporting a rejected request — while also naming which field was at fault, for callers that care. */
     private void requireValid(String value, String fieldName) {
         if (value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException(fieldName + " is required");
+            throw new ValidationException(fieldName, fieldName + " is required");
         }
     }
 
     private void requireValidPersonalId(String personalId) {
         String reason = PersonalIdValidator.validate(personalId);
         if (reason != null) {
-            throw new IllegalArgumentException(reason);
+            throw new ValidationException("Personal ID", reason);
         }
     }
 
     private void requireValidPhone(String phone) {
         String reason = PhoneValidator.validate(phone);
         if (reason != null) {
-            throw new IllegalArgumentException(reason);
+            throw new ValidationException("Phone", reason);
         }
     }
 }

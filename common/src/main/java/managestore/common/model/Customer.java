@@ -1,5 +1,8 @@
 package managestore.common.model;
 
+import managestore.common.exception.InsufficientStockException;
+import managestore.common.exception.InvalidQuantityException;
+
 import java.util.Objects;
 
 /**
@@ -64,12 +67,11 @@ public abstract class Customer {
      */
     public final PurchaseResult purchase(Product product, int quantity, Inventory inventory) {
         if (quantity <= 0) {
-            throw new IllegalArgumentException("Quantity must be positive: " + quantity);
+            throw new InvalidQuantityException(quantity);
         }
-        if (inventory.getQuantity(product) < quantity) {
-            throw new IllegalStateException(
-                    "Insufficient stock for " + product.getSku() + ": requested " + quantity
-                            + ", available " + inventory.getQuantity(product));
+        int available = inventory.getQuantity(product);
+        if (available < quantity) {
+            throw new InsufficientStockException(product.getSku(), quantity, available);
         }
         double listTotal = product.getPrice() * quantity;
         double charged = applyDiscount(listTotal);

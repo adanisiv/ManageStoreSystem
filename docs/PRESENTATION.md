@@ -116,7 +116,7 @@ run commands). Log in as `admin / Admin1234`, and a second client as
 9. **System Log** — on the admin client, show the log filtered by type: the employee and
    customer registrations, the sale, the restock, and the chat entry **containing the
    full transcript**.
-10. **Tests** — finish with `mvn test`: 94 tests, including real-socket integration tests.
+10. **Tests** — finish with `mvn test`: 102 tests, including real-socket integration tests.
 
 ## 6. Things to be ready to defend
 

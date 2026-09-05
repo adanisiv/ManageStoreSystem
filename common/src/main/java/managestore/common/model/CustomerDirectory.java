@@ -1,5 +1,8 @@
 package managestore.common.model;
 
+import managestore.common.exception.CustomerNotFoundException;
+import managestore.common.exception.DuplicateCustomerException;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +31,7 @@ public class CustomerDirectory {
 
     public void add(Customer customer) {
         if (customersByPersonalId.putIfAbsent(customer.getPersonalId(), customer) != null) {
-            throw new IllegalStateException("Customer already exists: " + customer.getPersonalId());
+            throw new DuplicateCustomerException(customer.getPersonalId());
         }
         for (CustomerDirectoryObserver observer : observers) {
             observer.onCustomerAdded(customer);
@@ -37,7 +40,7 @@ public class CustomerDirectory {
 
     public void update(Customer customer) {
         if (!customersByPersonalId.containsKey(customer.getPersonalId())) {
-            throw new IllegalStateException("Customer not found: " + customer.getPersonalId());
+            throw new CustomerNotFoundException(customer.getPersonalId());
         }
         customersByPersonalId.put(customer.getPersonalId(), customer);
         for (CustomerDirectoryObserver observer : observers) {

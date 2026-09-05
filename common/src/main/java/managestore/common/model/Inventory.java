@@ -1,5 +1,9 @@
 package managestore.common.model;
 
+import managestore.common.exception.InvalidQuantityException;
+import managestore.common.exception.InsufficientStockException;
+import managestore.common.exception.StockOverflowException;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,8 +50,7 @@ public class Inventory {
             // through the client UI today (the Restock spinner caps at 1000), but the protocol
             // itself places no upper bound on what a client sends, and this server should not
             // trust that blindly.
-            throw new IllegalArgumentException(
-                    "Restocking " + quantity + " of " + product.getSku() + " would overflow past Integer.MAX_VALUE");
+            throw new StockOverflowException(product.getSku(), quantity, e);
         }
         stock.put(product, updated);
         notifyObservers(product, updated);
@@ -57,8 +60,7 @@ public class Inventory {
         requirePositive(quantity);
         int current = getQuantity(product);
         if (current < quantity) {
-            throw new IllegalStateException(
-                    "Cannot remove " + quantity + " of " + product.getSku() + "; only " + current + " in stock");
+            throw new InsufficientStockException(product.getSku(), quantity, current);
         }
         int updated = current - quantity;
         stock.put(product, updated);
@@ -78,7 +80,7 @@ public class Inventory {
 
     private static void requirePositive(int quantity) {
         if (quantity <= 0) {
-            throw new IllegalArgumentException("Quantity must be positive: " + quantity);
+            throw new InvalidQuantityException(quantity);
         }
     }
 }

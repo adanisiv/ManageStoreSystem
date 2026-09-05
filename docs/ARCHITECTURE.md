@@ -147,6 +147,30 @@ and `SessionManagerTest` needs no passwords.
   Without the second check, re-adding an existing number would silently overwrite that
   employee's record.
 
+### Domain exceptions (`common/exception`)
+
+Failures in the domain are their own named types rather than `IllegalArgumentException`
+with different text each time, so callers can tell one failure from another without
+matching on message strings, and each exception carries the facts of the failure as
+fields (`InsufficientStockException.getShortfall()`, `ValidationException.getFieldName()`).
+
+They sit under two abstract roots, and the split is the useful part — the two groups
+call for different responses:
+
+- **`InvalidRequestException extends IllegalArgumentException`** — the request itself is
+  malformed and can be fixed by correcting the input: `InvalidQuantityException`,
+  `ValidationException`, `DuplicateEmployeeException`, `DuplicateUsernameException`,
+  `StockOverflowException`.
+- **`StoreStateException extends IllegalStateException`** — the request is well-formed but
+  the store cannot satisfy it right now; the identical request could succeed later:
+  `InsufficientStockException`, `DuplicateCustomerException`, `CustomerNotFoundException`.
+
+Each root extends the standard exception it replaced, which is what made the change
+safe to make late: every existing `catch (IllegalArgumentException | IllegalStateException)`
+in `ClientHandler` keeps working untouched, and only code that wants the precise reason
+has to name the subclass. `DomainExceptionTest` pins both halves down — the carried data,
+and the fact that each type still matches the standard one.
+
 ## 7. Inventory: sale and purchase
 
 `Inventory` is the Observer *Subject* and the single point of mutation:
@@ -234,11 +258,12 @@ that machinery for data the brief never requires to survive a restart, customers
 sales stay in memory — a deliberate, documented scope cut, isolated behind the same
 repository interfaces so a real database could replace it without touching any service.
 
-## 12. Testing (94 tests)
+## 12. Testing (102 tests)
 
 | Area | Tests |
 |---|---|
 | Domain model | `CustomerTest` (per-type discounts, the VIP floor-at-zero boundary, stock guard), `InventoryTest` (add/remove, overflow, observer notify/unregister), `CustomerDirectoryTest` |
+| Domain exceptions | `DomainExceptionTest` (8 — the data each exception carries, and that every one still matches the standard type it replaced) |
 | Transport | `MessageChannelTest` |
 | Services | `AuthServiceTest`, `SessionManagerTest`, `ChatMediatorTest` (14 — matching, queueing, callback, join, and every busy-guard), `ReportServiceTest` (11 — grouping, day filter, case-insensitive filter, both formats), `PasswordHasherTest`, `PersonalIdValidatorTest`, `PhoneValidatorTest`, `LogManagerTest` |
 | Persistence | `JsonFileEmployeeRepositoryTest`, `JsonFileAccountRepositoryTest` (round-trip through disk, delete, no temp file left behind) |
@@ -256,6 +281,9 @@ common/src/main/java/managestore/common/
              Product, Branch, Inventory, InventoryObserver, CustomerDirectory,
              CustomerDirectoryObserver, StoreChain, PurchaseResult, SalesRecord,
              LogEvent, LogType
+  exception/ InvalidRequestException + StoreStateException (abstract roots), and the
+             concrete InvalidQuantity, StockOverflow, Validation, DuplicateEmployee,
+             DuplicateUsername, InsufficientStock, DuplicateCustomer, CustomerNotFound
   protocol/  Message, MessageChannel, MessageType, NetworkDefaults + one DTO per
              request/response/notice (Login, Inventory, Purchase, Restock, Customer,
              Employee, Branch, Report, Chat, Log, Error)

@@ -29,10 +29,10 @@ import java.util.Base64;
 
 /**
  * Sales reports by branch/product/category (or one grand total), optionally
- * narrowed to one calendar day — the brief's "daily report" — delivered as
- * JSON either way per the brief. WORD format additionally comes back with
- * the actual .docx bytes (Base64-encoded over the same JSON protocol) so
- * "Save as Word" just decodes and writes them to disk.
+ * narrowed to one calendar day. The response is JSON either way; WORD format
+ * additionally comes back with the actual .docx bytes (Base64-encoded over
+ * the same JSON protocol) so "Save as Word" just decodes and writes them to
+ * disk.
  */
 public class ReportsPanel {
 

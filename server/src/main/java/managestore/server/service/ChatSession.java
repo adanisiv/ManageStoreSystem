@@ -23,7 +23,7 @@ class ChatSession {
         return participantEmployeeNumbers;
     }
 
-    /** Optional saved chat content (brief: "option to save the chat content" in the system log). */
+    /** Optional saved transcript, kept for the system log entry when the chat ends. */
     List<String> getTranscript() {
         return transcript;
     }

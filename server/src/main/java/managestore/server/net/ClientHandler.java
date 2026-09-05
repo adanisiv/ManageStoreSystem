@@ -320,7 +320,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
     }
 
-    /** The brief's "purchase" side of the Inventory interface: adds stock, as opposed to selling it. */
+    /** Restocking: adds stock to a branch's inventory, as opposed to selling it. */
     private void handleRestockRequest(Message message) {
         if (!requireLoginAndBranch()) {
             return;
@@ -418,7 +418,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 new EmployeeListResponse(context.getEmployeeRepository().findAll())));
     }
 
-    /** Admin-only: matches the brief's "Admin screen defines employee accounts". */
+    /** Admin-only: provisions a new employee's login and profile. */
     private void handleEmployeeAddRequest(Message message) {
         if (!requireLogin()) {
             return;

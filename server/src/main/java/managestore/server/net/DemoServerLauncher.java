@@ -35,12 +35,12 @@ import java.util.concurrent.Executors;
 /**
  * Convenience entry point for trying the whole app out: unlike
  * {@link ServerMain} (which starts with a completely empty network — no
- * branches, no products, no accounts — by design, so the brief's "admin
- * screen defines employee accounts" flow is exercised for real), this seeds
- * two branches, a product catalog with starting stock, demo customers, a
- * few days of sales history, and a handful of demo accounts, then starts
- * the exact same server loop. Nothing here is used by the graded flow:
- * {@link ServerMain} + {@link BootstrapAdmin} is still the real entry point.
+ * branches, no products, no accounts — by design, so the "admin creates
+ * every account" flow is exercised for real), this seeds two branches, a
+ * product catalog with starting stock, demo customers, a few days of sales
+ * history, and a handful of demo accounts, then starts the exact same
+ * server loop. {@link ServerMain} + {@link BootstrapAdmin} is still the
+ * real entry point for a clean deployment.
  */
 public final class DemoServerLauncher {
 

@@ -15,8 +15,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Stock of {@link Product}s for a single branch. This is the Subject side of
  * the Observer pattern: every {@link #addStock}/{@link #removeStock} call
  * notifies all registered {@link InventoryObserver}s with the product's new
- * quantity, which is how "every operation updates all employees in the
- * branch" (a requirement from the brief) is implemented.
+ * quantity, which is how a sale or restock by one employee reaches every
+ * other employee at the same branch live.
  *
  * <p>Backed by a {@link ConcurrentHashMap} and a {@link CopyOnWriteArrayList}
  * of observers because, once the server is running, multiple client threads

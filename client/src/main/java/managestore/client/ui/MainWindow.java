@@ -11,10 +11,10 @@ import managestore.common.model.Employee;
 import managestore.common.model.Role;
 
 /**
- * The main app window after login: one tabbed window rather than 8 separate
- * ones — every "interface" the brief lists is a tab here. Which employee is
- * logged in (and their role) is shown in the header and gates which tabs are
- * visible, matching "info shown depends on the logged-in user's type".
+ * The main app window after login: one tabbed window holding every screen
+ * rather than several separate ones. Which employee is logged in (and their
+ * role) is shown in the header and gates which tabs are visible — an admin
+ * sees the Employees and System Log tabs that other roles don't.
  */
 public class MainWindow {
 

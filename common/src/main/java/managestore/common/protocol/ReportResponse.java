@@ -3,8 +3,7 @@ package managestore.common.protocol;
 import java.util.List;
 
 /**
- * Report delivery is JSON either way (this whole object is sent as JSON per
- * the brief's requirement) — {@code wordFileBase64} is populated only when
+ * Report delivery is JSON either way — {@code wordFileBase64} is populated only when
  * the request asked for {@link ReportFormat#WORD}: the server renders the
  * same data into an actual .docx (via Apache POI) and Base64-encodes the
  * file bytes into this field so it can travel over the same line-based JSON

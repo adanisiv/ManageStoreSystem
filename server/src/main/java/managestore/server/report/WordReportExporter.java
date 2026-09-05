@@ -15,9 +15,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Renders a sales report as an actual .docx via Apache POI (the "self-study"
- * library the brief calls out) — a title, then a table of the same lines
- * {@link JsonReportExporter} would serialize, plus a totals row.
+ * Renders a sales report as an actual .docx via Apache POI — a title, then a
+ * table of the same lines {@link JsonReportExporter} would serialize, plus a
+ * totals row.
  */
 public class WordReportExporter implements ReportExporter {
 

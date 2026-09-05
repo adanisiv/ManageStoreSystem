@@ -40,7 +40,7 @@ public class ReportService {
 
     /**
      * Same as {@link #generate(List, ReportScope, String, ReportFormat)}, additionally
-     * narrowed to one calendar day (the brief's "daily report") when {@code day} is non-null.
+     * narrowed to one calendar day when {@code day} is non-null.
      */
     public ReportResponse generate(List<SalesRecord> records, ReportScope scope, String filterValue,
                                     ReportFormat format, LocalDate day) {

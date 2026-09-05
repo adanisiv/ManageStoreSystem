@@ -27,7 +27,7 @@ import managestore.common.protocol.MessageType;
 
 import java.util.Optional;
 
-/** Employee roster for the network; the "add employee" form is the brief's Admin screen, admin-only. */
+/** Employee roster for the network; the "add employee" form and delete action are admin-only. */
 public class EmployeesPanel {
 
     private final ServerConnection connection;

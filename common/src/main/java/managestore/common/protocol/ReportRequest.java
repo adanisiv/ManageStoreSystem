@@ -5,9 +5,9 @@ package managestore.common.protocol;
  * sku / category name; null means "all of them, grouped by {@code scope}".
  *
  * <p>{@code day} additionally narrows to sales made on one calendar day
- * (ISO-8601 {@code yyyy-MM-dd}, e.g. {@code "2026-08-17"}) — the brief's
- * "daily report" — compared against each sale's timestamp in UTC; null
- * means "no day restriction, every sale on record". Kept as a plain string
+ * (ISO-8601 {@code yyyy-MM-dd}, e.g. {@code "2026-08-17"}), compared against
+ * each sale's timestamp in UTC; null means "no day restriction, every sale
+ * on record". Kept as a plain string
  * (rather than {@code java.time.LocalDate}) so the wire format stays a
  * simple JSON string with no date-specific Gson adapter required.
  */

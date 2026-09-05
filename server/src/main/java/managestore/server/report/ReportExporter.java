@@ -6,8 +6,8 @@ import java.util.List;
 
 /**
  * Strategy pattern: {@link JsonReportExporter} and {@link WordReportExporter}
- * both implement this from the same report data, satisfying the brief's
- * requirement that reports can be produced in either format.
+ * both implement this from the same report data, so a report can be produced
+ * in either format without the caller knowing which.
  */
 public interface ReportExporter {
 

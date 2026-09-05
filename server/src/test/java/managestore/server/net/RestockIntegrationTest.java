@@ -34,12 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Proves the Inventory interface's "purchase" side (restocking, as opposed
- * to selling) end-to-end: adds stock, pushes a live INVENTORY_UPDATE to
- * another employee at the same branch (same Observer wiring as a sale), and
- * writes a PURCHASE-typed log entry — matching the brief's "will allow
- * performing purchase and sale of products" and its logging-by-action-type
- * requirement.
+ * Proves restocking end-to-end: adds stock, pushes a live INVENTORY_UPDATE
+ * to another employee at the same branch (same Observer wiring as a sale),
+ * and writes a PURCHASE-typed log entry.
  */
 class RestockIntegrationTest {
 

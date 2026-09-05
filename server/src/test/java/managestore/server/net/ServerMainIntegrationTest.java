@@ -28,8 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * End-to-end test through real TCP sockets: starts an actual ServerMain
  * accept loop, connects two independent client sockets, and proves that the
  * second login attempt for the same username is rejected while the first
- * remains logged in — the brief's "no duplicate login from multiple
- * computers" requirement, exercised exactly as it would happen in production.
+ * remains logged in — exercised exactly as it would happen in production.
  */
 class ServerMainIntegrationTest {
 

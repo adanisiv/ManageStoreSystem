@@ -13,8 +13,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * instance fine but can't reliably deserialize back into "the right
  * subclass" from JSON alone (see {@link managestore.common.protocol.CustomerDto}'s
  * javadoc for the same issue) — so unlike the other repositories, this one
- * isn't backed by a JSON file. Sales history resets on server restart; the
- * brief doesn't require it to survive one.
+ * isn't backed by a JSON file. Sales history resets on server restart, which
+ * this project accepts rather than adding subclass-aware (de)serialization
+ * for data that doesn't need to survive one.
  */
 public class SalesRecordRepository {
 

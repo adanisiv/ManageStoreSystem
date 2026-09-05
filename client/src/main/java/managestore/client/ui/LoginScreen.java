@@ -21,7 +21,7 @@ import managestore.common.protocol.MessageType;
 
 import java.io.IOException;
 
-/** The brief's "login screen with a user authentication interface". */
+/** The login screen: authenticates against the server before any other screen is shown. */
 public class LoginScreen {
 
     private final ServerConnection connection;

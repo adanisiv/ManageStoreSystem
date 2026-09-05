@@ -1,6 +1,6 @@
 package managestore.common.protocol;
 
-/** Adds stock of an existing product to the requesting employee's own branch — the brief's "purchase". */
+/** Adds stock of an existing product to the requesting employee's own branch — a restock from the supplier. */
 public class RestockRequest {
 
     private final String sku;

@@ -29,8 +29,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * employees knowing about each other at all.
  *
  * <p>Each branch has its own {@link BlockingQueue} of {@link ChatRequest}s
- * that couldn't be matched immediately (no free employee) — the "queue
- * management" the brief asks you to research and apply. When any employee
+ * that couldn't be matched immediately (no free employee). When any employee
  * at that branch becomes free (chat ends, or they just log in), the oldest
  * queued request is popped (FIFO) and that employee is told who tried to
  * reach them, so they can call back.

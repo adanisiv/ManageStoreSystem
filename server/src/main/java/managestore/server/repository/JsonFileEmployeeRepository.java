@@ -21,10 +21,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Employees persisted as a single JSON array file (employees.json), loaded
- * fully into memory at startup and rewritten on every save. No database is
- * required by the brief, so this keeps the project's focus on OOP/sockets/
- * design patterns instead of DB setup, behind the {@link EmployeeRepository}
- * interface so it could be swapped later without touching callers.
+ * fully into memory at startup and rewritten on every save. Sits behind the
+ * {@link EmployeeRepository} interface so a real database could replace it
+ * later without touching any caller.
  */
 public class JsonFileEmployeeRepository implements EmployeeRepository {
 

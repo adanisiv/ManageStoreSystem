@@ -1,10 +1,7 @@
-# Architecture — Store Chain Management System (ManageStoreSystem)
-
-Course: Algorithmic Development, JAVA — HIT, Summer 2026 (instructor: Roi Zimon)
+# Architecture
 
 This document describes the system **as built**: every class named here exists in the
-repository, and every design decision is written so it can be defended out loud.
-Pair it with [PRESENTATION.md](PRESENTATION.md) for the demo script.
+repository, matched to the design decision behind it.
 
 ## 1. High-level shape
 
@@ -52,9 +49,8 @@ LogEvent / LogType      one audit entry + its category
 
 ### Why a `Customer` class hierarchy instead of one class with a type field
 
-The brief requires *"יש להגדיר מחלקה שונה עבור כל סוג לקוח... כל מחלקה תטפל בפרטי מבצע
-שונה"* — a distinct class per customer type, each owning its own deal logic. That is
-textbook **polymorphism over conditionals**: rather than
+Each customer type gets its own class rather than a `type` field checked with
+conditionals — textbook **polymorphism over conditionals**: rather than
 `if (type == VIP) … else if (type == RETURNING) …`, each subclass overrides
 `applyDiscount(double)`. `PurchaseService.purchase(...)` calls
 `customer.purchase(product, qty, inventory)` and never learns which subclass it holds.
@@ -68,11 +64,11 @@ hole the template leaves open.
 
 ## 3. Design patterns actually used
 
-| Pattern | Class(es) | Requirement it satisfies |
+| Pattern | Class(es) | Why it's here |
 |---|---|---|
 | **Template Method + polymorphism** | `Customer.purchase` (final) + `applyDiscount` overrides in `NewCustomer` / `ReturningCustomer` / `VIPCustomer` | a different class per customer type, each with its own purchase track |
 | **Observer** | `Inventory` and `CustomerDirectory` are Subjects; `InventoryObserver` / `CustomerDirectoryObserver` are the interfaces; each logged-in `ClientHandler` registers itself | inventory and customer changes propagate live to every relevant employee |
-| **Mediator + FIFO queue** | `ChatMediator` + per-branch `BlockingQueue<ChatRequest>` | cross-branch chat routing, queueing when nobody is free, notifying on free-up — the brief's self-study requirement |
+| **Mediator + FIFO queue** | `ChatMediator` + per-branch `BlockingQueue<ChatRequest>` | cross-branch chat routing, queueing when nobody is free, notifying on free-up |
 | **Singleton** | `SessionManager`, `LogManager` | "one user, one session" and "one system log" only make sense as a single process-wide source of truth |
 | **Factory** | `CustomerFactory` | maps a `CustomerType` to the right subclass in exactly one place |
 | **Strategy** | `ReportExporter` ← `JsonReportExporter`, `WordReportExporter` | the same report data rendered as JSON or as a real `.docx` |
@@ -130,7 +126,7 @@ and `SessionManagerTest` needs no passwords.
 
 ## 6. Admin, roles, and input validation
 
-- The **Employees tab** is the brief's Admin screen. The add-employee form and the
+- The **Employees tab** is the admin console. The add-employee form and the
   delete button render **only** for `Role.ADMIN`; the server independently re-checks the
   role on `EMPLOYEE_ADD_REQUEST` and `EMPLOYEE_DELETE_REQUEST`. Client-side gating is
   for usability; the server-side check is the actual security boundary.
@@ -211,17 +207,17 @@ waiting. Employees never hold references to each other.
 
 ## 9. Logging
 
-`LogManager` (Singleton) collects `LogEvent`s. `LogType` covers exactly the categories
-the brief lists, plus one:
+`LogManager` (Singleton) collects `LogEvent`s. `LogType` covers employee and customer
+lifecycle events, purchases and sales, and chat sessions:
 
 | LogType | Written when |
 |---|---|
 | `EMPLOYEE_REGISTERED` | an admin adds an employee |
-| `EMPLOYEE_REMOVED` | an admin deletes one *(not required by the brief — added for symmetry, since every other admin mutation is audited)* |
+| `EMPLOYEE_REMOVED` | an admin deletes one *(added for symmetry, since every other admin mutation is audited)* |
 | `CUSTOMER_REGISTERED` | a customer is added |
-| `PURCHASE` | stock is restocked from the supplier (the brief's "קניות") |
-| `SALE` | a product is sold to a customer (the brief's "מכירות") |
-| `CHAT` | a chat session ends — **the entry stores the full transcript**, satisfying "ואופציה לשמור את תוכן השיחה" |
+| `PURCHASE` | stock is restocked from the supplier |
+| `SALE` | a product is sold to a customer |
+| `CHAT` | a chat session ends — **the entry stores the full transcript**, not just the fact that a chat happened |
 
 The admin-only System Log tab reads these back, filterable by type and sorted
 newest-first.
@@ -230,14 +226,13 @@ newest-first.
 
 `ReportService` aggregates `SalesRecord`s into a `ReportResponse` (a list of
 `ReportLineDto` plus totals), grouped by `ReportScope` — `BRANCH`, `PRODUCT`,
-`CATEGORY`, or `ALL` — optionally narrowed to one `filterValue` and/or one calendar day
-(the brief's "דוח יומי"). Day comparison is done in UTC so results don't shift with the
-server's timezone, and filter matching is case-insensitive so `"tops"` finds `"Tops"`.
+`CATEGORY`, or `ALL` — optionally narrowed to one `filterValue` and/or one calendar day.
+Day comparison is done in UTC so results don't shift with the server's timezone, and
+filter matching is case-insensitive so `"tops"` finds `"Tops"`.
 
-`ReportExporter` is the Strategy interface. `JsonReportExporter` produces the JSON the
-brief asks for; `WordReportExporter` produces a genuine `.docx` via **Apache POI** — the
-"self-study" library the brief calls for — which the client saves to disk after
-Base64-decoding it from the response.
+`ReportExporter` is the Strategy interface. `JsonReportExporter` produces JSON;
+`WordReportExporter` produces a genuine `.docx` via **Apache POI**, which the client
+saves to disk after Base64-decoding it from the response.
 
 ## 11. Persistence — and what is deliberately not persisted
 
@@ -254,9 +249,9 @@ ever sees the complete old version or the complete new one.
 
 `Customer` is polymorphic, and Gson can serialize a concrete instance but cannot know
 which subclass to rebuild on the way back without extra type machinery. Rather than add
-that machinery for data the brief never requires to survive a restart, customers and
-sales stay in memory — a deliberate, documented scope cut, isolated behind the same
-repository interfaces so a real database could replace it without touching any service.
+that machinery for data that doesn't need to survive a restart, customers and sales stay
+in memory — a deliberate, documented trade-off, isolated behind the same repository
+interfaces so a real database could replace it without touching any service.
 
 ## 12. Testing (102 tests)
 
@@ -305,12 +300,12 @@ client/src/main/java/managestore/client/
   resources/ app.css
 ```
 
-## 14. Known scope decisions (be ready to state these as choices, not gaps)
+## 14. Design trade-offs and known limitations
 
 1. **No database** — JSON files behind repository interfaces (§11).
 2. **Customers/sales/log are in-memory** — reset on restart; not required to persist (§11).
-3. **No edit-in-place for employees or customers** — the brief requires registration and
-   management, and delete exists; editing an existing record was not implemented.
+3. **No edit-in-place for employees or customers** — create and delete exist; editing
+   an existing record was out of scope for this iteration.
 4. **Branches and products are seeded in code**, not creatable from the UI —
    `ServerMain` starts an empty network by design so the "admin creates the accounts"
    flow is real; `DemoServerLauncher` seeds a populated one for demos.

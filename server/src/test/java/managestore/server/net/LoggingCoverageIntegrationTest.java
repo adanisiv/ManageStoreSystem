@@ -37,14 +37,14 @@ import java.util.concurrent.Executors;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The brief's system-log requirement (10.a-d) lists four action types the
- * log must cover. {@code EmployeeAndLogIntegrationTest} already proves
- * EMPLOYEE_REGISTERED (10.a) end-to-end and {@code RestockIntegrationTest}
- * proves the PURCHASE half of 10.c; this test closes the remaining gaps by
- * driving CUSTOMER_REGISTERED (10.b), the SALE half of 10.c, and CHAT (10.d)
- * — including that ending a chat saves the actual message text, not just
- * "a chat happened" — through the same real-socket path a live client uses,
- * not just LogManager in isolation (see LogManagerTest for that unit level).
+ * The system log covers four kinds of audited action.
+ * {@code EmployeeAndLogIntegrationTest} already proves EMPLOYEE_REGISTERED
+ * end-to-end and {@code RestockIntegrationTest} proves the PURCHASE case;
+ * this test closes the remaining gaps by driving CUSTOMER_REGISTERED, SALE,
+ * and CHAT — including that ending a chat saves the actual message text, not
+ * just "a chat happened" — through the same real-socket path a live client
+ * uses, not just LogManager in isolation (see LogManagerTest for that unit
+ * level).
  */
 class LoggingCoverageIntegrationTest {
 
@@ -107,8 +107,8 @@ class LoggingCoverageIntegrationTest {
             adminChannel.receive(); // PURCHASE_RESPONSE
             sellerChannel.receive(); // INVENTORY_UPDATE push on the other branch employee
 
-            // 10.d — a real chat: request, exchange one message, then end it. The brief's "option to
-            // save the chat content" means the saved log entry should contain the actual text sent.
+            // A real chat: request, exchange one message, then end it — the saved log entry should
+            // contain the actual transcript, not just the fact that a chat happened.
             adminChannel.send(Message.of(gson, MessageType.CHAT_REQUEST, new ChatRequestDto("B1")));
             ChatStartedNotice startedOnAdmin = adminChannel.receive().readPayload(gson, ChatStartedNotice.class);
             sellerChannel.receive(); // ChatStartedNotice on the other side

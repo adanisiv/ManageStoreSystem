@@ -8,9 +8,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * server process, since "is this username already logged in" only makes
  * sense as a single, shared source of truth across every connection thread.
  *
- * <p>Implements the brief's "no duplicate login from multiple computers"
- * requirement: {@link #tryLogin} is the sole gate a username must pass
- * before a connection is allowed to proceed past authentication.
+ * <p>{@link #tryLogin} is the sole gate a username must pass before a
+ * connection is allowed to proceed past authentication, which is what
+ * keeps the same account from being logged in from two places at once.
  */
 public final class SessionManager {
 

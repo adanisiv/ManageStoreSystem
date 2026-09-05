@@ -9,9 +9,9 @@ import java.util.Objects;
  * Base type for every customer in the network. Each concrete customer type
  * (see {@link NewCustomer}, {@link ReturningCustomer}, {@link VIPCustomer})
  * is its own class and overrides {@link #applyDiscount(double)} with its own
- * pricing rule — the brief requires "a different class per customer type,
- * each handling its own deal details", so this uses polymorphism instead of
- * an if/else chain on a "type" field.
+ * pricing rule — polymorphism over an if/else chain on a "type" field, so a
+ * new customer tier is a new class rather than a new branch scattered across
+ * the purchase logic.
  *
  * <p>{@link #purchase} is a Template Method: the steps of a purchase (check
  * stock, compute total, apply the subclass-specific discount, decrement

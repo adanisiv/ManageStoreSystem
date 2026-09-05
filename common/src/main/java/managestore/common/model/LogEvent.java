@@ -4,8 +4,7 @@ import java.time.Instant;
 
 /**
  * A single entry in the system log. {@code details} is a short human-readable
- * summary; for CHAT events it optionally holds the full transcript, per the
- * brief's "option to save the chat content" requirement.
+ * summary; for CHAT events it optionally holds the full transcript.
  */
 public class LogEvent {
 

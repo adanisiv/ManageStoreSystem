@@ -37,16 +37,15 @@ import java.util.function.Function;
 
 /**
  * Shows this employee's branch inventory and lets them both sell a product
- * to a customer and restock one from the supplier — the brief's "will allow
- * performing purchase and sale of products". Populated once via
+ * to a customer and restock one from the supplier. Populated once via
  * INVENTORY_SNAPSHOT_REQUEST/RESPONSE, then kept live by INVENTORY_UPDATE
  * pushes — including ones caused by other employees, which is the whole
  * point of the Observer wiring on the server.
  *
  * <p>Product and customer are picked from dropdowns (backed by the same
  * live data the table/customer directory already have), not typed as raw
- * SKU/personal-ID strings — nobody presenting or grading this should have
- * to memorize a SKU to try selling something.
+ * SKU/personal-ID strings — nobody using this screen should have to
+ * memorize a SKU to sell something.
  */
 public class InventoryPanel {
 

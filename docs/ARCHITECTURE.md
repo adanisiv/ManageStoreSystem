@@ -2,204 +2,293 @@
 
 Course: Algorithmic Development, JAVA — HIT, Summer 2026 (instructor: Roi Zimon)
 
-This document is written so you can present and defend every design decision. For each
-requirement from the brief, it names the concrete class/pattern that satisfies it.
+This document describes the system **as built**: every class named here exists in the
+repository, and every design decision is written so it can be defended out loud.
+Pair it with [PRESENTATION.md](PRESENTATION.md) for the demo script.
 
 ## 1. High-level shape
 
-Client-server system over plain TCP sockets. Three Maven modules:
+Client–server over plain TCP sockets, as three Maven modules:
 
 ```
 ManageStoreSystem/
-  common/   <- shared model + wire protocol (used by BOTH client and server)
-  server/   <- server app: networking, business logic, persistence, logging
-  client/   <- JavaFX desktop app: screens + a thin networking layer
+  common/   shared domain model + wire protocol (used by BOTH client and server)
+  server/   networking, business logic, persistence, logging
+  client/   JavaFX desktop app: screens + a thin networking layer
 ```
 
-`common` exists because client and server must agree on the exact shape of
-`Employee`, `Customer`, `Product`, and every `Message` sent over the socket. Putting
-those classes in one shared module (rather than duplicating them) is itself a basic
-but important design decision — no drift between what the client sends and what the
-server expects.
+`common` exists because the client and server must agree on the exact shape of every
+`Employee`, `Customer`, `Product`, and `Message` crossing the socket. One shared module
+instead of duplicated classes means the two sides can never drift apart — a
+compile-time guarantee rather than a convention.
+
+**Dependency direction:** `client → common ← server`. The client and server never
+depend on each other; both depend only on `common`. Enforced by the Maven module
+graph, not by discipline.
 
 ## 2. Domain model (`common/model`)
 
 ```
-Employee
-  - id, fullName, personalId, phone, accountNumber, branchId, employeeNumber, role
-  - Role (enum): SHIFT_MANAGER, CASHIER, SELLER, ADMIN
+Employee                employeeNumber, fullName, personalId, phone,
+                        accountNumber, branchId, role
+Role (enum)             ADMIN, SHIFT_MANAGER, CASHIER, SELLER
 
-Customer (abstract)
-  - fullName, personalId, phone
-  - abstract double applyDiscount(double amount)
-  - abstract PurchaseResult purchase(Product product, int quantity)
-  NewCustomer      extends Customer   // e.g. no discount, welcome track
-  ReturningCustomer extends Customer  // e.g. small loyalty discount
-  VIPCustomer       extends Customer  // e.g. larger discount + priority perks
+Customer (abstract)     personalId, fullName, phone
+  ├── NewCustomer       no discount (pays list price)
+  ├── ReturningCustomer 5% loyalty discount
+  └── VIPCustomer       15% discount, then a flat 10 perk credit, floored at 0
+  abstract String getCustomerType()
+  abstract double applyDiscount(double amount)
+  final    PurchaseResult purchase(Product, int quantity, Inventory)
 
-Product
-  - sku, name, category, price
-
-Branch
-  - id, name
-  - Inventory inventory
-  - List<Employee> staff
-
-Inventory
-  - Map<Product, Integer> stock  (per branch)
-  - operations: addStock(), removeStock(), getQuantity()
-
-StoreChain
-  - List<Branch> branches                  (the whole network)
-  - CustomerDirectory customerDirectory     (network-wide, shared by all branches)
+Product                 sku, name, category, price
+Branch                  id, name, Inventory inventory, List<Employee> staff
+Inventory               Map<Product,Integer> stock  (per branch) + InventoryObserver list
+CustomerDirectory       Map<String,Customer> by personal id (network-wide) + observers
+StoreChain              branches + product catalog + the one CustomerDirectory
+SalesRecord             branchId, product, customer, quantity, amountCharged, timestamp
+LogEvent / LogType      one audit entry + its category
 ```
 
-### Why a `Customer` class hierarchy instead of one class + an enum field
+### Why a `Customer` class hierarchy instead of one class with a type field
 
-The brief explicitly requires: *"יש להגדיר מחלקה שונה עבור כל סוג לקוח... כל מחלקה
-תטפל בפרטי מבצע שונה"* — a distinct class per customer type, each handling its own
-deal/discount logic. That is a textbook case for **polymorphism over
-conditionals**: instead of `if (type == VIP) {...} else if (type == RETURNING)
-{...}`, every subclass overrides `applyDiscount()` and `purchase()` with its own
-logic. `PurchaseService.sell(customer, product, qty)` just calls
-`customer.purchase(product, qty)` and never needs to know which subclass it's
-talking to. This is the single most important OOP point to be ready to explain.
+The brief requires *"יש להגדיר מחלקה שונה עבור כל סוג לקוח... כל מחלקה תטפל בפרטי מבצע
+שונה"* — a distinct class per customer type, each owning its own deal logic. That is
+textbook **polymorphism over conditionals**: rather than
+`if (type == VIP) … else if (type == RETURNING) …`, each subclass overrides
+`applyDiscount(double)`. `PurchaseService.purchase(...)` calls
+`customer.purchase(product, qty, inventory)` and never learns which subclass it holds.
 
-## 3. Design patterns used (be ready to name these explicitly)
+`Customer.purchase(...)` is deliberately **`final`** and is a **Template Method**: the
+steps (validate quantity → check stock → compute list total → apply the subclass's
+discount → decrement stock → build a `PurchaseResult`) are fixed and identical for
+every customer type. Only the discount step varies. A subclass cannot accidentally
+change the order of operations or skip the stock check — it can only fill in the one
+hole the template leaves open.
 
-| Pattern | Where | Requirement it satisfies |
+## 3. Design patterns actually used
+
+| Pattern | Class(es) | Requirement it satisfies |
 |---|---|---|
-| **Polymorphism / "Strategy via inheritance"** | `Customer` hierarchy | different class per customer type, different purchase track |
-| **Observer** | `Inventory`, `CustomerDirectory` are `Subject`s; each logged-in client's `ClientHandler` is an `Observer` | inventory/customer changes must propagate live to every other employee |
-| **Mediator + Producer/Consumer queue** | `ChatMediator` + `BlockingQueue<ChatRequest>` | cross-branch chat routing, queueing a request when no employee is free, notifying when one becomes free — this is the pattern the brief tells you to research and apply yourself |
-| **Singleton** | `SessionManager` (tracks who's logged in, blocks duplicate logins), `LogManager` (single log sink) | "no duplicate login from multiple computers", centralized logging |
-| **Factory** | `CustomerFactory` (creates the right `Customer` subclass), `MessageFactory` (deserializes incoming socket messages by type) | keeps object-creation logic in one place instead of scattering `new` + type-checks |
-| **Strategy** | `ReportExporter` interface, implemented by `JsonReportExporter` and `WordReportExporter` | reports must be exportable as both JSON and Word from the same report data |
+| **Template Method + polymorphism** | `Customer.purchase` (final) + `applyDiscount` overrides in `NewCustomer` / `ReturningCustomer` / `VIPCustomer` | a different class per customer type, each with its own purchase track |
+| **Observer** | `Inventory` and `CustomerDirectory` are Subjects; `InventoryObserver` / `CustomerDirectoryObserver` are the interfaces; each logged-in `ClientHandler` registers itself | inventory and customer changes propagate live to every relevant employee |
+| **Mediator + FIFO queue** | `ChatMediator` + per-branch `BlockingQueue<ChatRequest>` | cross-branch chat routing, queueing when nobody is free, notifying on free-up — the brief's self-study requirement |
+| **Singleton** | `SessionManager`, `LogManager` | "one user, one session" and "one system log" only make sense as a single process-wide source of truth |
+| **Factory** | `CustomerFactory` | maps a `CustomerType` to the right subclass in exactly one place |
+| **Strategy** | `ReportExporter` ← `JsonReportExporter`, `WordReportExporter` | the same report data rendered as JSON or as a real `.docx` |
+| **Repository** | `EmployeeRepository`, `AccountRepository` interfaces + their `JsonFile…` implementations | storage is swappable (JSON files today, a DB later) without touching services |
+| **Facade** | `ServerContext` | one object carrying the shared server state each `ClientHandler` thread needs |
 
-You don't have to use every pattern in the table to pass — but Observer (for sync),
-the Customer polymorphism, and the chat queue pattern are directly required by the
-brief's wording, so those three are the ones to know cold.
+## 4. Networking and protocol
 
-## 4. Networking / protocol (`common/protocol`, `server/net`, `client/net`)
+- **Wire format:** one JSON `Message` per line — `{"type": …, "payload": …}` — via
+  Gson. `MessageChannel` wraps a socket and does the line-framing and (de)serialization
+  for both sides, so client and server share identical transport code.
+- **`MessageType`** is the single enum listing every legal message. Adding a feature
+  means adding a request/response pair here, which makes the whole protocol surface
+  readable in one file.
+- **`ServerMain`** opens a `ServerSocket` and hands each accepted connection to its own
+  `ClientHandler` thread from a cached thread pool — the standard one-thread-per-client
+  socket-server shape.
+- **`ClientHandler`** loops on `receive()` and dispatches by `MessageType`. On
+  successful login it registers itself as an observer of its branch's `Inventory` and
+  of the network-wide `CustomerDirectory`, so it receives pushes without polling, and
+  unregisters in a `finally` block on disconnect.
+- **Client side:** `ServerConnection` runs one background reader thread and dispatches
+  each incoming message to listeners registered per `MessageType`, always via
+  `Platform.runLater` so screens can touch JavaFX nodes directly. There is no
+  request/response correlation id, and a push can legitimately arrive interleaved with
+  a reply — an event-driven listener model has no ordering assumptions to get wrong.
 
-- One `Message` base class, serialized to JSON over the socket (via Gson). Every
-  message has a `type` field (e.g. `LOGIN_REQUEST`, `INVENTORY_UPDATE`,
-  `CHAT_MESSAGE`, `REPORT_REQUEST`) and a `payload`.
-- `ServerMain` opens a `ServerSocket`; each accepted connection gets its own
-  `ClientHandler` thread (`implements Runnable`). This is the standard
-  multithreaded-socket-server shape expected in a course like this — one thread
-  per client, reading/writing that client's socket only.
-- On successful login, `ClientHandler` subscribes itself as an `Observer` to:
-  - the `Inventory` of the employee's own branch
-  - the network-wide `CustomerDirectory`
-  so it receives push updates without polling.
+### Robustness: one bad request must not kill a session
 
-## 5. Duplicate-login prevention
+`dispatchSafely` wraps every dispatch in a `catch (RuntimeException)`, reports the
+failure back to that client as an `ERROR` message, and keeps the connection alive. A
+malformed payload or an invalid enum value costs the client one rejected request, not
+their whole session. `ClientMain` registers a single global `ERROR` listener that
+surfaces those as a dialog, so no server-side rejection can fail silently.
 
-`SessionManager` (Singleton) holds `Map<String username, ClientHandler activeSession>`.
-`AuthService.login(username, password)`:
-1. Validates credentials against `EmployeeRepository`.
-2. If `SessionManager` already has an active session for that username, reject
-   with `ALREADY_LOGGED_IN`.
-3. Otherwise registers the new session; on socket disconnect the `ClientHandler`
-   removes itself from `SessionManager`.
+## 5. Authentication, sessions, and the duplicate-login rule
 
-## 6. Admin & password policy
+Three separate classes, deliberately not merged:
 
-- `Role.ADMIN` sees the Admin screen: create/edit employee accounts.
-- `PasswordPolicy` class (min length, requires digit, etc.) is applied whenever a
-  password is set — kept as its own class so the policy can be explained/changed
-  independently of `AuthService`.
+- **`AuthService`** — validates credentials and creates/deletes accounts. It returns
+  the same generic *"Invalid username or password"* for both an unknown username and a
+  wrong password, so a caller cannot use the response to enumerate valid usernames.
+- **`PasswordHasher`** — salted SHA-256, iterated 100,000 times. A single hash round is
+  fast enough to brute-force on a GPU if `accounts.json` ever leaks; iterating makes
+  each guess proportionally expensive. No plaintext password is ever stored.
+- **`SessionManager`** (Singleton) — `Map<username, sessionId>`, and `tryLogin` uses
+  `putIfAbsent`, so the duplicate-login check is **atomic**: two simultaneous logins for
+  the same username can never both win.
 
-## 7. Reports
+`AuthService` deliberately does **not** touch `SessionManager`. "Are these credentials
+correct?" and "is this user allowed to open a session right now?" are two different
+questions; `ClientHandler.handleLogin` asks them in order. Keeping them apart means
+each is independently testable, which is why `AuthServiceTest` needs no session state
+and `SessionManagerTest` needs no passwords.
 
-- `SalesRecord` (branch, product, customer, quantity, price, timestamp) is logged
-  on every sale.
-- `ReportService` aggregates `SalesRecord`s by branch / by product / by category
-  into a `SalesReport`.
-- `ReportExporter` (Strategy): `JsonReportExporter` (Gson) and `WordReportExporter`
-  (Apache POI — this is the "self-study" library the brief mentions) both take the
-  same `SalesReport` and produce different output formats.
+## 6. Admin, roles, and input validation
 
-## 8. Chat system
+- The **Employees tab** is the brief's Admin screen. The add-employee form and the
+  delete button render **only** for `Role.ADMIN`; the server independently re-checks the
+  role on `EMPLOYEE_ADD_REQUEST` and `EMPLOYEE_DELETE_REQUEST`. Client-side gating is
+  for usability; the server-side check is the actual security boundary.
+- **`PasswordPolicy`** — minimum length, requires a digit and a letter. Its own class so
+  the rule can be pointed at and changed without touching auth logic.
+- **`PersonalIdValidator`** — implements the real Israeli ID checksum (a Luhn-style
+  check digit over 9 digits, zero-padded). Not merely "9 digits" — an actually invalid
+  ID number is rejected.
+- **`PhoneValidator`** — accepts Israeli landline/mobile shapes after stripping spaces
+  and dashes; deliberately loose enough not to reject real numbers, strict enough to
+  catch `"asdf"`.
+- **Uniqueness** — a duplicate username is rejected by `AuthService.createAccount`, and
+  a duplicate employee number by `ClientHandler` before the account is created.
+  Without the second check, re-adding an existing number would silently overwrite that
+  employee's record.
 
-- `ChatMediator` on the server is the only thing that knows about all connected
-  employees' busy/free status (`Map<Employee, ChatStatus>`).
-- Employee A requests a chat with an employee at branch B:
-  - Mediator looks for a free employee at branch B → if found, opens a
-    `ChatSession` and both sides are marked BUSY.
-  - If none free, the request is placed on that branch's
-    `BlockingQueue<ChatRequest>`.
-  - When any employee at branch B goes free, the mediator pops the queue (FIFO)
-    and notifies that waiting requester so they can re-initiate.
-- A shift manager can join an existing `ChatSession` (session tracks a list of
-  participants, not just 2).
-- `ChatSession` end-of-conversation drops all socket-level chat routing; per the
-  brief, the server does not keep relaying anything afterward — it only still
-  knows both users are "busy" until the session formally ends.
-- Duplicate-call prevention reuses the same `SessionManager` concept: a user only
-  has one active socket/session, so they cannot originate two calls at once.
+## 7. Inventory: sale and purchase
+
+`Inventory` is the Observer *Subject* and the single point of mutation:
+
+- `addStock` / `removeStock` are `synchronized`, so two employees selling the last unit
+  concurrently cannot both succeed — one gets an `IllegalStateException`.
+- `removeStock` re-checks sufficiency inside the lock, which is what actually makes the
+  sale safe (the caller's earlier check is only a fast path).
+- `addStock` uses `Math.addExact`, so a restock quantity large enough to overflow `int`
+  fails loudly instead of silently wrapping stock to a negative number.
+- Every mutation notifies observers, which is how "המלאי מתעדכן אצל כל העובדים בסניף"
+  is implemented — including for the employee who performed the action, who learns the
+  new level through the same push as everyone else rather than a special case.
+
+## 8. Chat (`ChatMediator`)
+
+The mediator is the only object that knows who is connected, who is busy, and who is
+waiting. Employees never hold references to each other.
+
+- `requestChat(from, targetBranchId)` finds a free employee at that branch and opens a
+  `ChatSession`, or enqueues the request on that branch's `BlockingQueue<ChatRequest>`
+  and replies `CHAT_QUEUED`.
+- When a participant frees up, `notifyIfQueuedRequestWaiting` pops the oldest queued
+  request (FIFO) and sends that employee a `CHAT_FREE_NOTICE` naming who tried to reach
+  them, so they can call back via `requestDirectChat`.
+- `joinChat` lets a `SHIFT_MANAGER` join an existing session (a session holds a
+  participant *list*, not a pair).
+- **All three entry points refuse an already-busy employee.** Without that guard,
+  starting a second conversation would repoint the employee's session mapping while the
+  first session still listed them, so ending the first would delete their real mapping
+  to the second and tell their client the wrong chat ended. Re-requesting the session
+  you are already in is treated as a harmless no-op rather than an error.
+- `unregister` (on disconnect) also purges that employee's own queued requests, so a
+  person who closed the app can't later surface as a "waiting for you" notice.
+- Every state field is guarded by one monitor (`synchronized` methods on the mediator),
+  which is why plain `LinkedHashMap`/`LinkedHashSet` are safe here — and gives
+  deterministic, registration-order matching for "first free employee".
 
 ## 9. Logging
 
-`LogManager` (Singleton) exposes `log(LogEvent)`. `LogEvent` types:
-`EMPLOYEE_REGISTERED`, `CUSTOMER_REGISTERED`, `SALE`, `CHAT` (with an option to
-persist the full chat transcript). Every relevant service call
-(`EmployeeService`, `CustomerService`, `PurchaseService`, `ChatMediator`) fires an
-event into `LogManager` rather than writing logs itself — keeps logging
-cross-cutting and in one place.
+`LogManager` (Singleton) collects `LogEvent`s. `LogType` covers exactly the categories
+the brief lists, plus one:
 
-## 10. Persistence
+| LogType | Written when |
+|---|---|
+| `EMPLOYEE_REGISTERED` | an admin adds an employee |
+| `EMPLOYEE_REMOVED` | an admin deletes one *(not required by the brief — added for symmetry, since every other admin mutation is audited)* |
+| `CUSTOMER_REGISTERED` | a customer is added |
+| `PURCHASE` | stock is restocked from the supplier (the brief's "קניות") |
+| `SALE` | a product is sold to a customer (the brief's "מכירות") |
+| `CHAT` | a chat session ends — **the entry stores the full transcript**, satisfying "ואופציה לשמור את תוכן השיחה" |
 
-No database was required by the brief, so to keep the focus on OOP/sockets/design
-patterns (what's actually being graded), persistence is simple **JSON files**
-(one per entity type: `employees.json`, `customers.json`, `products.json`,
-`sales.json`), loaded at server startup and rewritten on change, via the same
-Gson dependency already used for the wire protocol. This is a deliberate scope
-decision — swappable for a real DB later without touching the domain model,
-since a `Repository` interface sits in front of it (`EmployeeRepository`,
-`CustomerRepository`, etc.) with a `JsonFileXRepository` implementation.
+The admin-only System Log tab reads these back, filterable by type and sorted
+newest-first.
 
-## 11. Testing
+## 10. Reports
 
-JUnit 5 in every module. Priority test targets (these map directly to the
-requirements, so failing/missing tests here are the first thing a grader checks):
-- `Customer` subclasses: correct discount/purchase behavior per type
-- `Inventory`: stock add/remove, negative-stock guard
-- `SessionManager`: duplicate login rejected, freed on disconnect
-- `ChatMediator`: queueing when nobody free, FIFO notification on free-up
-- `ReportService` + both `ReportExporter`s: correct aggregation and output shape
+`ReportService` aggregates `SalesRecord`s into a `ReportResponse` (a list of
+`ReportLineDto` plus totals), grouped by `ReportScope` — `BRANCH`, `PRODUCT`,
+`CATEGORY`, or `ALL` — optionally narrowed to one `filterValue` and/or one calendar day
+(the brief's "דוח יומי"). Day comparison is done in UTC so results don't shift with the
+server's timezone, and filter matching is case-insensitive so `"tops"` finds `"Tops"`.
 
-## 12. Package layout (concrete)
+`ReportExporter` is the Strategy interface. `JsonReportExporter` produces the JSON the
+brief asks for; `WordReportExporter` produces a genuine `.docx` via **Apache POI** — the
+"self-study" library the brief calls for — which the client saves to disk after
+Base64-decoding it from the response.
+
+## 11. Persistence — and what is deliberately not persisted
+
+| Data | Storage | Why |
+|---|---|---|
+| Employees | `data/employees.json` | survives restart; needed to log in again |
+| Accounts (credentials) | `data/accounts.json` | same, hashed + salted |
+| Branches, products | in memory, seeded at startup | no DB was required; seeding is `DemoServerLauncher`'s job |
+| Customers, sales history, log | in memory | see below |
+
+Both JSON repositories write to a temp file and then **atomically rename** it over the
+real one, so a crash mid-write cannot leave a half-written, corrupt file — a reader only
+ever sees the complete old version or the complete new one.
+
+`Customer` is polymorphic, and Gson can serialize a concrete instance but cannot know
+which subclass to rebuild on the way back without extra type machinery. Rather than add
+that machinery for data the brief never requires to survive a restart, customers and
+sales stay in memory — a deliberate, documented scope cut, isolated behind the same
+repository interfaces so a real database could replace it without touching any service.
+
+## 12. Testing (94 tests)
+
+| Area | Tests |
+|---|---|
+| Domain model | `CustomerTest` (per-type discounts, the VIP floor-at-zero boundary, stock guard), `InventoryTest` (add/remove, overflow, observer notify/unregister), `CustomerDirectoryTest` |
+| Transport | `MessageChannelTest` |
+| Services | `AuthServiceTest`, `SessionManagerTest`, `ChatMediatorTest` (14 — matching, queueing, callback, join, and every busy-guard), `ReportServiceTest` (11 — grouping, day filter, case-insensitive filter, both formats), `PasswordHasherTest`, `PersonalIdValidatorTest`, `PhoneValidatorTest`, `LogManagerTest` |
+| Persistence | `JsonFileEmployeeRepositoryTest`, `JsonFileAccountRepositoryTest` (round-trip through disk, delete, no temp file left behind) |
+| End-to-end over **real sockets** | `ServerMainIntegrationTest` (duplicate login), `LiveSyncIntegrationTest` (Observer push between two clients), `ChatIntegrationTest`, `RestockIntegrationTest`, `EmployeeAndLogIntegrationTest`, `EmployeeDeleteIntegrationTest`, `InputValidationIntegrationTest`, `LoggingCoverageIntegrationTest`, `MalformedRequestResilienceIntegrationTest` |
+
+The integration tests start a real `ServerSocket`, connect real client sockets, and
+assert on real pushed messages — they exercise the actual `ClientHandler` wiring, not a
+mock of it.
+
+## 13. Package layout (as built)
 
 ```
 common/src/main/java/managestore/common/
-  model/        Employee, Role, Customer, NewCustomer, ReturningCustomer, VIPCustomer,
-                Product, Branch, Inventory, StoreChain, LogEvent, SalesRecord
-  protocol/     Message, MessageType, LoginRequest, LoginResponse, InventoryUpdate,
-                CustomerUpdate, ChatMessage, ReportRequest, ReportResponse, ...
+  model/     Employee, Role, Customer(+3 subclasses), CustomerType, CustomerFactory,
+             Product, Branch, Inventory, InventoryObserver, CustomerDirectory,
+             CustomerDirectoryObserver, StoreChain, PurchaseResult, SalesRecord,
+             LogEvent, LogType
+  protocol/  Message, MessageChannel, MessageType, NetworkDefaults + one DTO per
+             request/response/notice (Login, Inventory, Purchase, Restock, Customer,
+             Employee, Branch, Report, Chat, Log, Error)
 
 server/src/main/java/managestore/server/
-  net/          ServerMain, ClientHandler, SessionManager
-  service/      AuthService, EmployeeService, CustomerService, PurchaseService,
-                ReportService, ChatMediator, LogManager
-  repository/   EmployeeRepository, CustomerRepository, ProductRepository,
-                SalesRepository, JsonFileXRepository implementations
-  report/       ReportExporter, JsonReportExporter, WordReportExporter
+  net/       ServerMain, ClientHandler, ServerContext, BootstrapAdmin, DemoServerLauncher
+  service/   AuthService, PasswordHasher, PasswordPolicy, PersonalIdValidator,
+             PhoneValidator, SessionManager, PurchaseService, ReportService,
+             ChatMediator, ChatSession, ChatRequest, ChatEndpoint, LogManager
+  repository/EmployeeRepository, AccountRepository, SalesRecordRepository,
+             JsonFileEmployeeRepository, JsonFileAccountRepository
+  report/    ReportExporter, JsonReportExporter, WordReportExporter
+  model/     Account (server-only: credentials, never sent to a client)
 
 client/src/main/java/managestore/client/
-  net/          ServerConnection
-  ui/           LoginScreen, AdminScreen, InventoryScreen, CustomersScreen,
-                ReportsScreen, EmployeesScreen, ChatScreen, LogsScreen
+  ClientMain, net/ServerConnection
+  ui/        LoginScreen, MainWindow, InventoryPanel, CustomersPanel, ReportsPanel,
+             ChatPanel, EmployeesPanel, LogsPanel, PasswordRevealField, UiUtil
+  resources/ app.css
 ```
 
-## 13. Build order (matches the task list this was designed against)
+## 14. Known scope decisions (be ready to state these as choices, not gaps)
 
-1. `common` domain model + unit tests
-2. `server` networking + auth + session control
-3. Observer-based inventory/customer sync
-4. Chat system (Mediator + queue)
-5. Reports (JSON + Word export)
-6. Logging
-7. `client` JavaFX screens wired to networking
-8. Tests throughout, README, push to GitHub
+1. **No database** — JSON files behind repository interfaces (§11).
+2. **Customers/sales/log are in-memory** — reset on restart; not required to persist (§11).
+3. **No edit-in-place for employees or customers** — the brief requires registration and
+   management, and delete exists; editing an existing record was not implemented.
+4. **Branches and products are seeded in code**, not creatable from the UI —
+   `ServerMain` starts an empty network by design so the "admin creates the accounts"
+   flow is real; `DemoServerLauncher` seeds a populated one for demos.
+5. **A deleted employee's live session keeps working until they disconnect** — they can
+   never log in again (`AuthService.login` refuses an account with no employee record),
+   but no mechanism force-closes another thread's socket.
+6. **Employee-number uniqueness is check-then-act**, not atomic. Two admins adding the
+   same number in the same instant is a theoretical race; a repository-level
+   `putIfAbsent` would close it, as `CustomerDirectory` already does for customers.

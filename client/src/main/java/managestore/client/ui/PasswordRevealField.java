@@ -1,8 +1,6 @@
 package managestore.client.ui;
 
 import javafx.animation.PauseTransition;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
@@ -96,10 +94,5 @@ class PasswordRevealField {
 
     void clear() {
         passwordField.clear();
-    }
-
-    void setOnAction(EventHandler<ActionEvent> handler) {
-        passwordField.setOnAction(handler);
-        plainField.setOnAction(handler);
     }
 }

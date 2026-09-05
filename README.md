@@ -38,9 +38,11 @@ when presenting this project.
 mvn test
 ```
 
-Runs all unit and integration tests (including real-socket integration
-tests that start an actual server and connect real clients) across all three
-modules.
+Runs all 94 tests across the three modules — unit tests for the domain model,
+services and validators, plus integration tests that start a real
+`ServerSocket`, connect real client sockets, and assert on the messages
+actually pushed back (live inventory sync, chat queueing, duplicate login,
+employee add/delete, logging, and malformed-request handling).
 
 ## Run
 

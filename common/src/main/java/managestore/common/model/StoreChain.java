@@ -1,7 +1,6 @@
 package managestore.common.model;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -37,10 +36,6 @@ public class StoreChain {
 
     public Product getProduct(String sku) {
         return productCatalog.get(sku);
-    }
-
-    public Collection<Product> allProducts() {
-        return productCatalog.values();
     }
 
     public CustomerDirectory getCustomerDirectory() {

@@ -4,7 +4,6 @@ import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
@@ -139,11 +138,5 @@ public class LoginScreen {
         stage.setTitle("ManageStoreSystem — Login");
         stage.setScene(scene);
         stage.show();
-    }
-
-    static void showError(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR, message);
-        alert.setTitle(title);
-        alert.showAndWait();
     }
 }

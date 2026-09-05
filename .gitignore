@@ -6,3 +6,9 @@ out/
 .vscode/
 data/*.json
 !data/.gitkeep
+
+# Local convenience launchers: generated with this machine's absolute classpath baked
+# in, so they are personal shortcuts, not something to ship. The portable way to run
+# the app is documented in README.md.
+run_client.bat
+run_demo_server.bat

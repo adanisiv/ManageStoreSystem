@@ -37,8 +37,4 @@ public final class SessionManager {
     public void logout(String username) {
         activeSessionIdByUsername.remove(username);
     }
-
-    public boolean isLoggedIn(String username) {
-        return activeSessionIdByUsername.containsKey(username);
-    }
 }

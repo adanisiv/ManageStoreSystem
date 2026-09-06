@@ -49,7 +49,10 @@ import managestore.common.protocol.ReportResponse;
 import managestore.common.protocol.RestockRequest;
 import managestore.common.protocol.RestockResponse;
 import managestore.common.protocol.StockEntry;
+import managestore.server.service.AccountNumberValidator;
 import managestore.server.service.ChatEndpoint;
+import managestore.server.service.EmployeeNumberValidator;
+import managestore.server.service.FullNameValidator;
 import managestore.server.service.LogManager;
 import managestore.server.service.PersonalIdValidator;
 import managestore.server.service.PhoneValidator;
@@ -433,7 +436,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         try {
             // Each of these throws (a ValidationException, which is an IllegalArgumentException)
             // on the first invalid field, short-circuiting the rest of the chain.
-            requireValid(request.getFullName(), "Full name");
+            requireValidFullName(request.getFullName());
             requireValidPersonalId(request.getPersonalId());
             requireValidPhone(request.getPhone());
             CustomerType type = CustomerType.valueOf(request.getCustomerType());
@@ -509,11 +512,11 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         EmployeeAddRequest request = message.readPayload(context.getGson(), EmployeeAddRequest.class);
         try {
             // Validate every required field up front; the first failure throws and skips the rest.
-            requireValid(request.getEmployeeNumber(), "Employee #");
-            requireValid(request.getFullName(), "Full name");
+            requireValidEmployeeNumber(request.getEmployeeNumber());
+            requireValidFullName(request.getFullName());
             requireValidPersonalId(request.getPersonalId());
             requireValidPhone(request.getPhone());
-            requireValid(request.getAccountNumber(), "Account #");
+            requireValidAccountNumber(request.getAccountNumber());
             requireValid(request.getBranchId(), "Branch");
             requireValid(request.getUsername(), "Username");
             // AuthService.createAccount already rejects a taken *username*, but nothing was
@@ -777,6 +780,27 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         String reason = PhoneValidator.validate(phone);
         if (reason != null) {
             throw new ValidationException("Phone", reason);
+        }
+    }
+
+    private void requireValidFullName(String fullName) {
+        String reason = FullNameValidator.validate(fullName);
+        if (reason != null) {
+            throw new ValidationException("Full name", reason);
+        }
+    }
+
+    private void requireValidAccountNumber(String accountNumber) {
+        String reason = AccountNumberValidator.validate(accountNumber);
+        if (reason != null) {
+            throw new ValidationException("Account #", reason);
+        }
+    }
+
+    private void requireValidEmployeeNumber(String employeeNumber) {
+        String reason = EmployeeNumberValidator.validate(employeeNumber);
+        if (reason != null) {
+            throw new ValidationException("Employee #", reason);
         }
     }
 }

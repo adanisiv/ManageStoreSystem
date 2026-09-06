@@ -5,7 +5,7 @@ built in Java on raw TCP sockets. Branches share live inventory and customer dat
 employees chat across branches through a routed queue, and managers export sales
 reports as JSON or Word documents.
 
-**Java 8 · JavaFX · Maven · TCP sockets · Gson · Apache POI · JUnit 5 · 102 tests**
+**Java 8 · JavaFX · Maven · TCP sockets · Gson · Apache POI · JUnit 5 · 123 tests**
 
 ## What it does
 
@@ -50,7 +50,7 @@ protocol, and the trade-offs: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 Requires JDK 8 with JavaFX bundled and Maven 3.6+.
 
 ```
-mvn test          # 102 tests, including real-socket integration tests
+mvn test          # 123 tests, including real-socket integration tests
 mvn compile
 ```
 

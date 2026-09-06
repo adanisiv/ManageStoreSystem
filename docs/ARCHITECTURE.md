@@ -150,6 +150,14 @@ and `SessionManagerTest` needs no passwords.
 - **`PhoneValidator`** — accepts Israeli landline/mobile shapes after stripping spaces
   and dashes; deliberately loose enough not to reject real numbers, strict enough to
   catch `"asdf"`.
+- **`FullNameValidator`, `AccountNumberValidator`, `EmployeeNumberValidator`** — full
+  name, phone, and personal ID had real validators from early on; these three fields
+  were only checked for being non-blank until this pass, so `"12345"` was an accepted
+  full name and `"ASAACA"` an accepted bank account number. None of the three has a
+  universal checkable format the way a personal ID does, so each stays loose (a name
+  needs one letter and a sane length, an account number needs a digit and a plausible
+  shape, an employee number just needs a plausible character set) — same philosophy as
+  `PhoneValidator`: catch obvious garbage, don't pretend to be a source of truth.
 - **Uniqueness** — a duplicate username is rejected by `AuthService.createAccount`, and
   a duplicate employee number by `ClientHandler` before the account is created.
   Without the second check, re-adding an existing number would silently overwrite that
@@ -266,14 +274,14 @@ that machinery for data that doesn't need to survive a restart, customers and sa
 in memory — a deliberate, documented trade-off, isolated behind the same repository
 interfaces so a real database could replace it without touching any service.
 
-## 12. Testing (102 tests)
+## 12. Testing (123 tests)
 
 | Area | Tests |
 |---|---|
 | Domain model | `CustomerTest` (per-type discounts, the VIP floor-at-zero boundary, stock guard), `InventoryTest` (add/remove, overflow, observer notify/unregister), `CustomerDirectoryTest` |
 | Domain exceptions | `DomainExceptionTest` (8 — the data each exception carries, and that every one still matches the standard type it replaced) |
 | Transport | `MessageChannelTest` |
-| Services | `AuthServiceTest`, `SessionManagerTest`, `ChatMediatorTest` (14 — matching, queueing, callback, join, and every busy-guard), `ReportServiceTest` (11 — grouping, day filter, case-insensitive filter, both formats), `PasswordHasherTest`, `PersonalIdValidatorTest`, `PhoneValidatorTest`, `LogManagerTest` |
+| Services | `AuthServiceTest`, `SessionManagerTest`, `ChatMediatorTest` (14 — matching, queueing, callback, join, and every busy-guard), `ReportServiceTest` (11 — grouping, day filter, case-insensitive filter, both formats), `PasswordHasherTest`, `PersonalIdValidatorTest`, `PhoneValidatorTest`, `FullNameValidatorTest`, `AccountNumberValidatorTest`, `EmployeeNumberValidatorTest`, `LogManagerTest` |
 | Persistence | `JsonFileEmployeeRepositoryTest`, `JsonFileAccountRepositoryTest` (round-trip through disk, delete, no temp file left behind) |
 | End-to-end over **real sockets** | `ServerMainIntegrationTest` (duplicate login), `LiveSyncIntegrationTest` (Observer push between two clients), `ChatIntegrationTest`, `RestockIntegrationTest`, `EmployeeAndLogIntegrationTest`, `EmployeeDeleteIntegrationTest`, `InputValidationIntegrationTest`, `LoggingCoverageIntegrationTest`, `MalformedRequestResilienceIntegrationTest` |
 
@@ -299,7 +307,8 @@ common/src/main/java/managestore/common/
 server/src/main/java/managestore/server/
   net/       ServerMain, ClientHandler, ServerContext, BootstrapAdmin, DemoServerLauncher
   service/   AuthService, PasswordHasher, PasswordPolicy, PersonalIdValidator,
-             PhoneValidator, SessionManager, PurchaseService, ReportService,
+             PhoneValidator, FullNameValidator, AccountNumberValidator,
+             EmployeeNumberValidator, SessionManager, PurchaseService, ReportService,
              ChatMediator, ChatSession, ChatRequest, ChatEndpoint, LogManager
   repository/EmployeeRepository, AccountRepository, SalesRecordRepository,
              JsonFileEmployeeRepository, JsonFileAccountRepository

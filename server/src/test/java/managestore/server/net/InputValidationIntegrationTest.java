@@ -31,12 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Before PersonalIdValidator/PhoneValidator existed, the Admin "add employee"
- * and "add customer" forms accepted anything at all — {@code Objects.requireNonNull}
- * rejects null but not "", "asdf", or a personal ID that's the wrong length or
- * fails the Israeli ID checksum. This proves the real request/response path
- * (not just the validator classes in isolation) now rejects garbage input
- * and still accepts a real one.
+ * Before the dedicated validators existed, the Admin "add employee" and "add
+ * customer" forms accepted anything at all — a blank-check rejects null and
+ * "" but not "asdf" as a phone, "12345" as a full name, or "ASAACA" as a bank
+ * account number. This proves the real request/response path (not just the
+ * validator classes in isolation) now rejects garbage input and still
+ * accepts a real one, for every field that has a dedicated validator:
+ * personal ID, phone, full name, account number, and employee number.
  */
 class InputValidationIntegrationTest {
 
@@ -171,6 +172,50 @@ class InputValidationIntegrationTest {
             admin.receive(); // CUSTOMER_UPDATE_BROADCAST
             CustomerAddResponse accepted = admin.receive().readPayload(gson, CustomerAddResponse.class);
             assertTrue(accepted.isSuccess(), "a valid customer should be accepted: " + accepted.getErrorMessage());
+        } finally {
+            serverSocket.close();
+            clientPool.shutdownNow();
+        }
+    }
+
+    @Test
+    void addEmployeeRejectsInvalidFullNameAndAccountNumberButAcceptsValidOnes() throws Exception {
+        // Personal ID and phone had real algorithmic validation from the start; full name,
+        // account number, and employee number were only checked for being non-blank until
+        // FullNameValidator/AccountNumberValidator/EmployeeNumberValidator closed that gap.
+        StoreChain storeChain = new StoreChain();
+        InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
+        InMemoryEmployeeRepository employeeRepository = new InMemoryEmployeeRepository();
+        AuthService authService = new AuthService(accountRepository, employeeRepository);
+        authService.createAccount(
+                new Employee("ADMIN1", "The Boss", "1", "050-1", "ACC-1", null, Role.ADMIN), "validationAdmin", "secret123");
+
+        ServerContext context = new ServerContext(storeChain, authService, employeeRepository, gson);
+        ServerSocket serverSocket = ServerMain.bind(0);
+        int port = serverSocket.getLocalPort();
+        ExecutorService clientPool = Executors.newCachedThreadPool();
+        Thread serverThread = new Thread(() -> ServerMain.acceptLoop(serverSocket, context, clientPool));
+        serverThread.setDaemon(true);
+        serverThread.start();
+
+        try (MessageChannel admin = loginAs(port, "validationAdmin")) {
+            // A name that's just digits should be refused, the same way "asdf" as a phone is.
+            admin.send(Message.of(gson, MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
+                    "E1", "12345", "123456782", "050-1234567", "ACC-1", "B1", "SELLER", "e1user", "Secret12")));
+            EmployeeAddResponse rejectedForBadName = admin.receive().readPayload(gson, EmployeeAddResponse.class);
+            assertFalse(rejectedForBadName.isSuccess(), "a full name with no letters in it should be rejected");
+
+            // "ASAACA" with no digit at all is not a real payroll account number.
+            admin.send(Message.of(gson, MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
+                    "E2", "Dana Cohen", "204812077", "050-1234567", "ASAACA", "B1", "SELLER", "e2user", "Secret12")));
+            EmployeeAddResponse rejectedForBadAccount = admin.receive().readPayload(gson, EmployeeAddResponse.class);
+            assertFalse(rejectedForBadAccount.isSuccess(), "an account number with no digit should be rejected");
+
+            // A real name and a plausible account number, everything else unchanged, succeeds.
+            admin.send(Message.of(gson, MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
+                    "E3", "Dana Cohen", "204812077", "050-1234567", "ACC-99", "B1", "SELLER", "e3user", "Secret12")));
+            EmployeeAddResponse accepted = admin.receive().readPayload(gson, EmployeeAddResponse.class);
+            assertTrue(accepted.isSuccess(), "a valid name and account number should be accepted: " + accepted.getErrorMessage());
         } finally {
             serverSocket.close();
             clientPool.shutdownNow();

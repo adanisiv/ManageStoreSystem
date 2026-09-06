@@ -3,13 +3,16 @@ package managestore.common.protocol;
 import managestore.common.model.Customer;
 
 /**
- * Flat, non-polymorphic wire representation of a {@link Customer}. The
- * domain model uses a class hierarchy (NewCustomer/ReturningCustomer/
- * VIPCustomer) so purchase logic can be polymorphic server-side, but Gson
- * can't reliably deserialize back into "the right subclass" from JSON alone
- * — and the client never needs to: it only displays customer data and
- * refers back to customers by personalId when requesting a purchase, so a
- * flat DTO with a type label is simpler and avoids that whole problem.
+ * Flat wire representation of a {@link Customer} — no class hierarchy,
+ * just plain fields.
+ *
+ * <p>The domain model uses a class hierarchy (NewCustomer, ReturningCustomer,
+ * VIPCustomer) so the purchase logic can be polymorphic on the server. But
+ * Gson cannot reliably tell, from JSON alone, which subclass to rebuild.
+ * The client does not need that anyway: it only displays customer data,
+ * and refers back to a customer by personalId when it requests a purchase.
+ * So a flat DTO with a type label is simpler, and sidesteps the problem
+ * entirely.
  */
 public class CustomerDto {
 

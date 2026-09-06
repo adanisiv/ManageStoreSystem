@@ -53,15 +53,18 @@ public class CustomersPanel {
         Label statusLabel = new Label();
         statusLabel.getStyleClass().add("status-label");
 
-        // "Add Customer" clicked: require a personal ID and a name before bothering the
-        // server; phone is optional. On success the fields get cleared by the
-        // CUSTOMER_ADD_RESPONSE handler below, not here — this only fires off the request.
+        // "Add Customer" clicked. A personal ID and a name are required before we
+        // even talk to the server. Phone is optional. This only sends the request —
+        // if it succeeds, the CUSTOMER_ADD_RESPONSE handler below clears the fields.
         addButton.setOnAction(e -> {
             String id = idField.getText().trim();
             if (id.isEmpty() || nameField.getText().trim().isEmpty()) {
                 UiUtil.setStatus(statusLabel, false, "Personal ID and full name are required.");
                 return;
             }
+            // Disable the button until CUSTOMER_ADD_RESPONSE comes back, so a fast double-click
+            // can't send this same customer twice before the first attempt is even answered.
+            addButton.setDisable(true);
             connection.send(MessageType.CUSTOMER_ADD_REQUEST,
                     new CustomerAddRequest(id, nameField.getText().trim(), phoneField.getText().trim(), typeChoice.getValue()));
         });
@@ -70,8 +73,8 @@ public class CustomersPanel {
         addBar.getStyleClass().add("toolbar");
         addBar.setPadding(new Insets(8));
 
-        // Initial full load of the customer directory (requested once below): rebuild the
-        // map from scratch and push everything into the table.
+        // The initial full load of the customer directory (we request it once, below).
+        // Rebuild our map from scratch and push everything into the table.
         connection.on(MessageType.CUSTOMER_LIST_RESPONSE, message -> {
             CustomerListResponse response = message.readPayload(connection.getGson(), CustomerListResponse.class);
             byPersonalId.clear();
@@ -81,19 +84,20 @@ public class CustomersPanel {
             rows.setAll(byPersonalId.values());
         });
 
-        // Keeps the table live for every connected employee (including other admins adding
-        // customers elsewhere), independent of whether *this* form's own submission succeeded.
+        // This keeps the table live for every connected employee, including admins
+        // adding customers from other screens. It fires no matter whether this
+        // particular form's own submission succeeded.
         connection.on(MessageType.CUSTOMER_UPDATE_BROADCAST, message -> {
             CustomerUpdateNotice notice = message.readPayload(connection.getGson(), CustomerUpdateNotice.class);
             byPersonalId.put(notice.getCustomer().getPersonalId(), notice.getCustomer());
             rows.setAll(byPersonalId.values());
         });
 
-        // This form's own feedback: a direct response tied to the request it just sent, instead of
-        // inferring success by matching the broadcast above against whatever's still typed in the
-        // fields (which also had no way to represent failure at all — a rejected add, e.g. an
-        // invalid personal ID, used to only surface as a separate global popup with no visible
-        // connection back to this form).
+        // This is the form's own direct feedback for the request it just sent.
+        // We used to guess success by comparing the broadcast above against whatever
+        // was still typed in the fields. That approach could not show failure at all —
+        // a rejected add, for example an invalid personal ID, only showed up as a
+        // separate popup with no visible link back to this form.
         connection.on(MessageType.CUSTOMER_ADD_RESPONSE, message -> {
             CustomerAddResponse response = message.readPayload(connection.getGson(), CustomerAddResponse.class);
             if (response.isSuccess()) {
@@ -106,6 +110,7 @@ public class CustomersPanel {
                 // Leave whatever the user typed in place so they can fix it and retry.
                 UiUtil.setStatus(statusLabel, false, "Failed: " + response.getErrorMessage());
             }
+            addButton.setDisable(false);
         });
 
         connection.send(MessageType.CUSTOMER_LIST_REQUEST, new Object());

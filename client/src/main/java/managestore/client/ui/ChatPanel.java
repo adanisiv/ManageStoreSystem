@@ -25,10 +25,14 @@ import managestore.common.protocol.ChatStartedNotice;
 import managestore.common.protocol.MessageType;
 
 /**
- * Cross-branch chat. Server-side this is entirely driven by ChatMediator
- * (Mediator pattern + a per-branch queue) — this panel just reflects
- * whatever state that mediator pushes: queued, started, a callback notice
- * once someone frees up, messages, and end.
+ * Cross-branch chat screen.
+ *
+ * All the real logic lives on the server, in a class called ChatMediator.
+ * It uses the Mediator pattern: it keeps a queue of waiting requests for
+ * each branch, and decides who talks to whom. This panel does not decide
+ * anything itself. It just shows whatever state the mediator sends us:
+ * queued, started, a callback notice when someone frees up, new messages,
+ * and chat end.
  */
 public class ChatPanel {
 
@@ -71,9 +75,10 @@ public class ChatPanel {
         joinTargetField.setPromptText("Employee # to join their chat");
         Button joinButton = new Button("Join as Shift Manager");
 
-        // "Request Chat" clicked: ask the server to connect this employee with a
-        // free employee at the chosen branch. The server decides whether someone
-        // is free right now (CHAT_STARTED) or this request has to wait (CHAT_QUEUED).
+        // "Request Chat" clicked. Ask the server to connect this employee with a
+        // free employee at the chosen branch. The server checks if someone is
+        // free right now. If yes, it sends CHAT_STARTED. If not, it sends
+        // CHAT_QUEUED and this request waits its turn.
         requestButton.setOnAction(e -> {
             BranchDto target = targetBranchChoice.getValue();
             if (target != null) {
@@ -111,27 +116,31 @@ public class ChatPanel {
             statusLabel.setText("Nobody free at " + notice.getTargetBranchId()
                     + " right now — waiting in queue. You can pick another branch and ask again.");
             statusLabel.setGraphic(null);
-            // Deliberately left enabled. Being queued can last indefinitely — until somebody at
-            // that branch frees up or logs in — and disabling the only way out would strand the
-            // user with no way to retry or switch branches short of restarting the client.
-            // Asking again is safe: ChatMediator.requestChat drops this employee's previous
-            // pending request before enqueuing the new one, so there is never a duplicate.
+            // We leave the button enabled on purpose. Being queued can take a long
+            // time, until someone at that branch frees up or logs in. If we disabled
+            // the button now, the user would be stuck with no way to retry or pick a
+            // different branch, short of restarting the client.
+            // Clicking again is safe. On the server, ChatMediator.requestChat always
+            // drops this employee's older pending request before adding the new one,
+            // so we never end up with two requests queued at once.
             requestButton.setDisable(false);
         });
 
-        // Server says a chat session has actually begun: remember the session id (needed
-        // to send/end messages), reset the transcript, and flip the buttons into "in a chat" mode.
+        // Server says a chat session has begun. We save the session id, since we
+        // need it to send messages and to end the chat later. We also reset the
+        // transcript and switch the buttons into "in a chat" mode.
         connection.on(MessageType.CHAT_STARTED, message -> {
             ChatStartedNotice notice = message.readPayload(connection.getGson(), ChatStartedNotice.class);
-            // The server re-broadcasts CHAT_STARTED to everyone when a shift manager joins, so
-            // that the roster in the status line updates. That is the same session continuing,
-            // not a new one — clearing the transcript on it would wipe the conversation the
-            // existing participants are in the middle of, right off their screens.
+            // The server sends CHAT_STARTED again to everyone whenever a shift manager
+            // joins an existing chat. That is only to update the participant list shown
+            // in the status line — it is still the same session, not a new one.
+            // If we cleared the transcript here, we would wipe out the conversation
+            // that the other participants are still in the middle of.
             boolean sameSessionContinuing = notice.getSessionId().equals(activeSessionId);
             activeSessionId = notice.getSessionId();
             statusLabel.setText("Chat active with: " + String.join(", ", notice.getParticipantEmployeeNumbers()));
-            // A "Call back X" button from an earlier CHAT_FREE_NOTICE would otherwise keep showing
-            // (and stay clickable) even after that exact callback already connected.
+            // We also clear any old "Call back X" button here. Otherwise it would
+            // keep showing, and stay clickable, even after that callback already connected.
             statusLabel.setGraphic(null);
             if (!sameSessionContinuing) {
                 transcript.clear();
@@ -141,8 +150,9 @@ public class ChatPanel {
             requestButton.setDisable(true);
         });
 
-        // Someone tried to reach this employee while they were busy elsewhere; show who,
-        // and offer a one-click button to start a new chat request back to that person.
+        // Someone tried to reach this employee while they were busy elsewhere.
+        // Show who it was, and offer a one-click button to start a new chat
+        // request back to that person.
         connection.on(MessageType.CHAT_FREE_NOTICE, message -> {
             ChatFreeNotice notice = message.readPayload(connection.getGson(), ChatFreeNotice.class);
             statusLabel.setText(notice.getFromEmployeeName() + " tried to reach you while you were busy.");
@@ -180,8 +190,8 @@ public class ChatPanel {
         sendBar.setPadding(new Insets(8));
 
         VBox top = new VBox(8, requestBar);
-        // The "join another employee's chat" bar is only shown to shift managers —
-        // regular employees don't get the option to insert themselves into someone else's session.
+        // The "join another employee's chat" bar is only shown to shift managers.
+        // Regular employees don't get the option to insert themselves into someone else's session.
         if (employee.getRole() == Role.SHIFT_MANAGER) {
             joinTargetField.setPromptText("Employee # to join (see the Employees tab)");
             HBox joinBar = new HBox(8, joinTargetField, joinButton);

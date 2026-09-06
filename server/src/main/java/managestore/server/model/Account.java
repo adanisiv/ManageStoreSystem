@@ -1,18 +1,20 @@
 package managestore.server.model;
 
 /**
- * Login credentials for one {@link managestore.common.model.Employee}, kept
- * server-side only and never sent to clients — deliberately separate from
- * the Employee profile (separation of concerns: "who this person is" vs.
- * "how they authenticate").
+ * Login credentials for one {@link managestore.common.model.Employee}. This
+ * stays on the server only and is never sent to clients. It is kept separate
+ * from the Employee profile on purpose: Employee is "who this person is,"
+ * and Account is "how they log in."
  */
 public class Account {
 
     private final String employeeNumber;
     private final String username;
-    // The password itself is never stored — only its salted hash, plus the
-    // random salt used when hashing it, so two identical passwords never
-    // produce the same stored value and a leaked hash can't be reversed easily.
+    // We never store the actual password. We only store its hash (a scrambled
+    // version made using the salt below) and the random salt used to make
+    // that hash. Because of the random salt, two employees with the same
+    // password get different stored values. This also makes it much harder
+    // for someone to recover the real password if the stored hash ever leaks.
     private String passwordHash;
     private String passwordSalt;
 
@@ -39,8 +41,9 @@ public class Account {
         return passwordSalt;
     }
 
-    // Lets a password change (hash + salt together) update this same Account
-    // instance instead of requiring a brand-new object to be constructed.
+    // Updates the password hash and salt on this same Account object,
+    // instead of forcing the caller to build a brand-new Account just to
+    // change the password.
     public void setPassword(String passwordHash, String passwordSalt) {
         this.passwordHash = passwordHash;
         this.passwordSalt = passwordSalt;

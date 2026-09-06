@@ -179,6 +179,60 @@ class InputValidationIntegrationTest {
     }
 
     @Test
+    void addCustomerNormalizesLeadingZerosSoTheSamePersonCantRegisterTwice() throws Exception {
+        // "23456783" (8 digits) and "023456783" (the same ID typed with its leading zero) both
+        // pass the checksum on their own, since padding to 9 digits happens before it runs
+        // either way -- both compute the exact same weighted sum. Before personal IDs were
+        // normalized before being stored, they would land under two different keys in
+        // CustomerDirectory, and the same real person could be registered as two different
+        // customers just by typing their ID with or without the leading zero.
+        StoreChain storeChain = new StoreChain();
+        InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
+        InMemoryEmployeeRepository employeeRepository = new InMemoryEmployeeRepository();
+        AuthService authService = new AuthService(accountRepository, employeeRepository);
+        authService.createAccount(
+                new Employee("ADMIN1", "The Boss", "1", "050-1", "ACC-1", null, Role.ADMIN), "validationAdmin", "secret123");
+
+        ServerContext context = new ServerContext(storeChain, authService, employeeRepository, gson);
+        ServerSocket serverSocket = ServerMain.bind(0);
+        int port = serverSocket.getLocalPort();
+        ExecutorService clientPool = Executors.newCachedThreadPool();
+        Thread serverThread = new Thread(() -> ServerMain.acceptLoop(serverSocket, context, clientPool));
+        serverThread.setDaemon(true);
+        serverThread.start();
+
+        try (MessageChannel admin = loginAs(port, "validationAdmin")) {
+            admin.send(Message.of(gson, MessageType.CUSTOMER_ADD_REQUEST,
+                    new CustomerAddRequest("23456783", "Noa Levi", "050-1234567", "NEW")));
+            admin.receive(); // CUSTOMER_UPDATE_BROADCAST
+            CustomerAddResponse first = admin.receive().readPayload(gson, CustomerAddResponse.class);
+            assertTrue(first.isSuccess(), "the first registration should succeed: " + first.getErrorMessage());
+
+            // Same person, ID typed with the leading zero this time, different name entirely.
+            admin.send(Message.of(gson, MessageType.CUSTOMER_ADD_REQUEST,
+                    new CustomerAddRequest("023456783", "Someone Else Entirely", "050-7654321", "VIP")));
+            // A rejected add sends only the CUSTOMER_ADD_RESPONSE. A wrongly-accepted one (the
+            // bug this test guards against) would also broadcast the "new" customer to every
+            // connected client first. Reading messages by type, rather than assuming a fixed
+            // order, means this test correctly recognizes either outcome instead of accidentally
+            // reading the wrong message as the response if the bug were still there.
+            Message secondReply = admin.receive();
+            if (secondReply.getType() == MessageType.CUSTOMER_UPDATE_BROADCAST) {
+                secondReply = admin.receive();
+            }
+            assertEquals(MessageType.CUSTOMER_ADD_RESPONSE, secondReply.getType());
+            CustomerAddResponse second = secondReply.readPayload(gson, CustomerAddResponse.class);
+            assertFalse(second.isSuccess(),
+                    "the leading-zero form of the same ID must be recognized as the same customer, not a new one");
+            assertTrue(second.getErrorMessage().contains("already exists"),
+                    "must be rejected specifically as a duplicate, not for some other reason: " + second.getErrorMessage());
+        } finally {
+            serverSocket.close();
+            clientPool.shutdownNow();
+        }
+    }
+
+    @Test
     void addEmployeeRejectsInvalidFullNameAndAccountNumberButAcceptsValidOnes() throws Exception {
         // Personal ID and phone had real algorithmic validation from the start; full name,
         // account number, and employee number were only checked for being non-blank until

@@ -13,12 +13,16 @@ public class SalesRecord {
     private final Instant timestamp;
 
     public SalesRecord(String branchId, PurchaseResult purchaseResult) {
-        // Default path: reuse the timestamp already captured when the purchase happened,
-        // delegating to the other constructor instead of duplicating field assignments.
+        // Default path: reuse the timestamp that was already recorded when the
+        // purchase happened. We call the other constructor instead of copying
+        // the same field assignments here.
         this(branchId, purchaseResult, purchaseResult.getTimestamp());
     }
 
-    /** Same as {@link #SalesRecord(String, PurchaseResult)} but with an explicit timestamp, for backdated/imported data and tests. */
+    /**
+     * Same as {@link #SalesRecord(String, PurchaseResult)}, but lets the caller
+     * set the timestamp directly. Used for backdated or imported data, and in tests.
+     */
     public SalesRecord(String branchId, PurchaseResult purchaseResult, Instant timestamp) {
         this.branchId = branchId;
         this.product = purchaseResult.getProduct();

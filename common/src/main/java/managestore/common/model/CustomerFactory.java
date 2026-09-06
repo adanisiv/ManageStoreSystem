@@ -1,9 +1,10 @@
 package managestore.common.model;
 
 /**
- * Factory pattern: the one place that maps a {@link CustomerType} to the
- * concrete {@link Customer} subclass to instantiate, so callers (e.g. the
- * "add customer" screen) never need an if/else on type themselves.
+ * Factory pattern: this is the one place that turns a {@link CustomerType}
+ * into the matching concrete {@link Customer} subclass. Callers, like the
+ * "add customer" screen, just ask for a type. They never need their own
+ * if/else to pick the class.
  */
 public final class CustomerFactory {
 

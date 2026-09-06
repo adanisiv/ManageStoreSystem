@@ -36,16 +36,20 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Shows this employee's branch inventory and lets them both sell a product
- * to a customer and restock one from the supplier. Populated once via
- * INVENTORY_SNAPSHOT_REQUEST/RESPONSE, then kept live by INVENTORY_UPDATE
- * pushes — including ones caused by other employees, which is the whole
- * point of the Observer wiring on the server.
+ * Shows this employee's branch inventory. From here they can sell a product
+ * to a customer, or restock one from the supplier.
  *
- * <p>Product and customer are picked from dropdowns (backed by the same
- * live data the table/customer directory already have), not typed as raw
- * SKU/personal-ID strings — nobody using this screen should have to
- * memorize a SKU to sell something.
+ * <p>The table is filled once, using an INVENTORY_SNAPSHOT_REQUEST and its
+ * response. After that it stays live: the server pushes an INVENTORY_UPDATE
+ * message any time the stock changes, even when another employee is the one
+ * who sold or restocked something. This works through the Observer pattern:
+ * the server keeps a list of "observers" (screens like this one) and notifies
+ * all of them whenever inventory changes, instead of each screen having to
+ * ask "did anything change?" over and over.
+ *
+ * <p>Product and customer are picked from dropdowns, backed by the same live
+ * data as the table and the customer directory. Nobody using this screen
+ * should have to type or memorize a raw SKU or personal ID just to sell something.
  */
 public class InventoryPanel {
 
@@ -69,8 +73,9 @@ public class InventoryPanel {
         table.getColumns().add(categoryColumn());
         table.getColumns().add(priceColumn());
         table.getColumns().add(column("Quantity", "quantity"));
-        // A row this low reads as "needs restocking soon" at a glance, without having to scan
-        // the number in every row — same idea as a low-battery or low-fuel indicator.
+        // Highlighting a low-quantity row lets someone spot "needs restocking soon"
+        // at a glance, instead of reading the number in every row. Same idea as a
+        // low-battery or low-fuel warning light.
         table.setRowFactory(tv -> new TableRow<StockEntry>() {
             @Override
             protected void updateItem(StockEntry item, boolean empty) {
@@ -79,9 +84,10 @@ public class InventoryPanel {
             }
         });
 
-        // productChoice/customerChoice share the very same observable lists that back the
-        // inventory table and customer directory, so both dropdowns update automatically
-        // whenever a snapshot or push updates rows/customerRows below.
+        // productChoice and customerChoice are built from the same observable lists
+        // that back the inventory table and customer directory ("observable" means
+        // JavaFX watches the list and updates anything built from it automatically).
+        // So both dropdowns update on their own whenever rows or customerRows changes below.
         ChoiceBox<StockEntry> productChoice = new ChoiceBox<>(rows);
         productChoice.setPrefWidth(240);
         ChoiceBox<CustomerDto> customerChoice = new ChoiceBox<>(customerRows);
@@ -91,9 +97,10 @@ public class InventoryPanel {
         Button restockButton = new Button("📦 Restock (purchase)");
         Label statusLabel = new Label();
 
-        // "Sell" clicked: validate a product and customer are both selected, then ask
-        // the server to process the sale. The result (success/failure) arrives later
-        // via PURCHASE_RESPONSE below — nothing here updates the UI directly.
+        // "Sell" clicked. Check that a product and a customer are both selected,
+        // then ask the server to process the sale. The result (success or failure)
+        // arrives later, via PURCHASE_RESPONSE below. This handler does not update
+        // the UI itself.
         sellButton.setOnAction(e -> {
             StockEntry product = productChoice.getValue();
             CustomerDto customer = customerChoice.getValue();
@@ -101,18 +108,25 @@ public class InventoryPanel {
                 UiUtil.setStatus(statusLabel, false, "Pick a product and a customer first.");
                 return;
             }
+            // Disable the button right away. Inventory's stock checks are correct even if two
+            // sales arrive at once, so a fast double-click wouldn't corrupt anything — but it
+            // would still ring up two real sales instead of one. PURCHASE_RESPONSE re-enables it.
+            sellButton.setDisable(true);
             connection.send(MessageType.PURCHASE_REQUEST,
                     new PurchaseRequest(product.getSku(), quantitySpinner.getValue(), customer.getPersonalId()));
         });
 
-        // "Restock" clicked: validate a product is selected, then ask the server to
-        // add the chosen quantity back into stock. Result comes back via RESTOCK_RESPONSE.
+        // "Restock" clicked. Check that a product is selected, then ask the server
+        // to add the chosen quantity back into stock. The result comes back via RESTOCK_RESPONSE.
         restockButton.setOnAction(e -> {
             StockEntry product = productChoice.getValue();
             if (product == null) {
                 UiUtil.setStatus(statusLabel, false, "Pick a product first.");
                 return;
             }
+            // Same reason as the Sell button above: block a double-click from sending two
+            // real restock requests. RESTOCK_RESPONSE re-enables it.
+            restockButton.setDisable(true);
             connection.send(MessageType.RESTOCK_REQUEST, new RestockRequest(product.getSku(), quantitySpinner.getValue()));
         });
 
@@ -125,9 +139,10 @@ public class InventoryPanel {
         sellBar.setPadding(new Insets(8));
         statusLabel.getStyleClass().add("status-label");
 
-        // First full load of inventory, requested once below. Rebuilds the bySku map from
-        // scratch (this is the only listener that clears it) and pushes the result into
-        // the table/dropdown via the shared refresh helper.
+        // The first full load of inventory (we send the request once, below).
+        // This is the only listener that clears the bySku map and rebuilds it from
+        // scratch. It then pushes the result into the table and dropdown using the
+        // shared refresh helper below.
         connection.on(MessageType.INVENTORY_SNAPSHOT_RESPONSE, message -> {
             InventorySnapshotResponse response = message.readPayload(connection.getGson(), InventorySnapshotResponse.class);
             bySku.clear();
@@ -137,16 +152,17 @@ public class InventoryPanel {
             refreshRowsKeepingSelection(rows, bySku.values(), productChoice, StockEntry::getSku);
         });
 
-        // A live push telling us one product's stock changed — could be from our own
-        // sale/restock, or from another employee's, anywhere in the branch. Only that
-        // one SKU is updated in the map (not a full reload), then the table/dropdown refresh.
+        // A live push telling us one product's stock changed. This can be from our
+        // own sale or restock, or from another employee's, anywhere in the branch.
+        // We only update that one SKU in the map, not the whole list, then refresh
+        // the table and dropdown.
         connection.on(MessageType.INVENTORY_UPDATE, message -> {
             InventoryUpdateNotice notice = message.readPayload(connection.getGson(), InventoryUpdateNotice.class);
             bySku.put(notice.getEntry().getSku(), notice.getEntry());
             refreshRowsKeepingSelection(rows, bySku.values(), productChoice, StockEntry::getSku);
         });
 
-        // First full load of the customer directory, requested once below.
+        // The first full load of the customer directory (we send the request once, below).
         connection.on(MessageType.CUSTOMER_LIST_RESPONSE, message -> {
             CustomerListResponse response = message.readPayload(connection.getGson(), CustomerListResponse.class);
             customersById.clear();
@@ -156,35 +172,38 @@ public class InventoryPanel {
             refreshRowsKeepingSelection(customerRows, customersById.values(), customerChoice, CustomerDto::getPersonalId);
         });
 
-        // A live push when a customer's data changes elsewhere (e.g. another screen
-        // edited them) — same "update one entry, then refresh" approach as inventory.
+        // A live push for when a customer's data changes elsewhere, for example
+        // another screen edited them. Same "update one entry, then refresh" approach as inventory.
         connection.on(MessageType.CUSTOMER_UPDATE_BROADCAST, message -> {
             CustomerUpdateNotice notice = message.readPayload(connection.getGson(), CustomerUpdateNotice.class);
             customersById.put(notice.getCustomer().getPersonalId(), notice.getCustomer());
             refreshRowsKeepingSelection(customerRows, customersById.values(), customerChoice, CustomerDto::getPersonalId);
         });
 
-        // Reply to our own PURCHASE_REQUEST (sent from the "Sell" button above): report
-        // success with the amount actually charged, or the server's reason for rejecting it
-        // (e.g. insufficient stock). Note the inventory table itself is updated separately,
-        // by the INVENTORY_UPDATE push the sale triggers on the server side — not from here.
+        // This is the reply to our own PURCHASE_REQUEST, sent from the "Sell" button
+        // above. On success, report the amount actually charged. On failure, show
+        // the server's reason, for example not enough stock.
+        // Note that the inventory table itself is NOT updated here. It gets updated
+        // separately, by the INVENTORY_UPDATE push that the sale triggers on the server.
         connection.on(MessageType.PURCHASE_RESPONSE, message -> {
             PurchaseResponse response = message.readPayload(connection.getGson(), PurchaseResponse.class);
             UiUtil.setStatus(statusLabel, response.isSuccess(), response.isSuccess()
                     ? "Sold — charged " + formatCurrency(response.getAmountCharged()) + " (list " + formatCurrency(response.getListTotal()) + ")"
                     : "Sale failed: " + response.getErrorMessage());
+            sellButton.setDisable(false);
         });
 
-        // Reply to our own RESTOCK_REQUEST (sent from the "Restock" button above).
+        // This is the reply to our own RESTOCK_REQUEST, sent from the "Restock" button above.
         connection.on(MessageType.RESTOCK_RESPONSE, message -> {
             RestockResponse response = message.readPayload(connection.getGson(), RestockResponse.class);
             UiUtil.setStatus(statusLabel, response.isSuccess(), response.isSuccess()
                     ? "Restocked — new quantity " + response.getNewQuantity()
                     : "Restock failed: " + response.getErrorMessage());
+            restockButton.setDisable(false);
         });
 
-        // Kick off the initial loads as soon as the panel is built; the responses are
-        // handled by the listeners registered just above.
+        // Kick off the initial loads as soon as the panel is built. The responses
+        // are handled by the listeners registered just above.
         connection.send(MessageType.INVENTORY_SNAPSHOT_REQUEST, new Object());
         connection.send(MessageType.CUSTOMER_LIST_REQUEST, new Object());
 
@@ -195,13 +214,19 @@ public class InventoryPanel {
     }
 
     /**
-     * Replaces a ChoiceBox's backing list wholesale (as every snapshot/push here does) while
-     * keeping its current selection — otherwise every push, including the one confirming the
-     * user's own just-completed sale/restock, silently clears whatever they had picked: the new
-     * list holds brand-new {@link StockEntry}/{@link CustomerDto} instances (plain data classes,
-     * no {@code equals()} override), so the ChoiceBox's old selected reference is never found in
-     * it and the selection collapses to nothing. Re-selects by the stable key (SKU / personal ID)
-     * instead of relying on object identity surviving the refresh.
+     * Replaces a ChoiceBox's backing list completely, the way every snapshot or
+     * push here does, while keeping whatever item was selected.
+     *
+     * Without this, every push — even the one confirming the user's own sale or
+     * restock — would silently clear their selection. Here is why: the new list
+     * holds brand-new {@link StockEntry} or {@link CustomerDto} objects. These are
+     * plain data classes with no custom {@code equals()} method, so Java compares
+     * them by identity, not by their field values. The ChoiceBox's old selected
+     * object is never found in the new list, since it is technically a different
+     * object even if its data is the same, so the selection just disappears.
+     *
+     * To avoid that, we re-select by a stable key (the SKU or personal ID) instead
+     * of relying on the same object surviving the refresh.
      */
     private <T> void refreshRowsKeepingSelection(ObservableList<T> rows, Collection<T> newValues,
                                                   ChoiceBox<T> choice, Function<T, String> keyOf) {

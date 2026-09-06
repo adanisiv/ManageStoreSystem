@@ -46,8 +46,8 @@ public class PurchaseResult {
     }
 
     public double getDiscountAmount() {
-        // Derived value, not a stored field: how much the discount saved the
-        // customer, calculated from the two totals that are actually stored.
+        // Not a stored field. We calculate how much the discount saved the
+        // customer from the two totals we do store.
         return listTotal - amountCharged;
     }
 

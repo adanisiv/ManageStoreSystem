@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -83,6 +84,20 @@ class JsonFileEmployeeRepositoryTest {
         repo.delete("NO-SUCH-EMPLOYEE");
 
         assertEquals(1, repo.findAll().size());
+    }
+
+    @Test
+    void loadingAFileWithInvalidJsonFailsWithAClearMessageInsteadOfARawGsonCrash(@TempDir Path dir) throws Exception {
+        // Gson reports broken JSON (a stray comma, a half-written file left over from a crash)
+        // with its own unchecked exception, which is a different type from the IOException the
+        // repository already catches and wraps. Before this was fixed, that meant a genuinely
+        // corrupted file crashed server startup with a raw Gson stack trace instead of the
+        // clean "Failed to load ..." message the code otherwise guarantees everywhere else.
+        Path file = dir.resolve("employees.json");
+        Files.write(file, "{not valid json at all,,,".getBytes());
+
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> new JsonFileEmployeeRepository(file));
+        assertTrue(e.getMessage().contains(file.toString()), "the message should name the file that failed to load: " + e.getMessage());
     }
 
     @Test

@@ -7,15 +7,16 @@ import java.util.Optional;
 
 public interface EmployeeRepository {
 
-    // Looks up a single employee by their unique employee number; empty if none exists.
+    // Looks up a single employee by their unique employee number. Returns empty if none exists.
     Optional<Employee> findByEmployeeNumber(String employeeNumber);
 
     // Returns every stored employee.
     List<Employee> findAll();
 
-    // Upsert: creates the employee if their number is new, otherwise overwrites the existing record.
+    // Saves the employee. If their number is new, this creates a new record.
+    // If the number already exists, this overwrites that record.
     void save(Employee employee);
 
-    /** No-op if no employee with that number exists. */
+    /** Does nothing if no employee with that number exists. */
     void delete(String employeeNumber);
 }

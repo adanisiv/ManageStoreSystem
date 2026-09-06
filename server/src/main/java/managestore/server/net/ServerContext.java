@@ -13,13 +13,14 @@ import managestore.server.service.ReportService;
 /** Shared state every {@link ClientHandler} thread needs a reference to. */
 public class ServerContext {
 
-    // Branches, products, inventory and the customer directory — the one shared instance every
-    // client thread reads from and mutates, which is why it's passed in rather than built here.
+    // Holds the branches, products, inventory, and customer directory. This is the one shared
+    // instance that every client thread reads from and changes, which is why it's passed in
+    // here rather than created inside this class.
     private final StoreChain storeChain;
     private final AuthService authService;
     private final EmployeeRepository employeeRepository;
-    // These four are created fresh per-server (not passed in) because nothing outside this class
-    // needs to construct or configure them differently between ServerMain and DemoServerLauncher.
+    // These four are created fresh for each server, not passed in. Nothing outside this class
+    // needs to build or configure them differently between ServerMain and DemoServerLauncher.
     private final PurchaseService purchaseService = new PurchaseService();
     private final ChatMediator chatMediator = new ChatMediator();
     private final SalesRecordRepository salesRecordRepository = new SalesRecordRepository();

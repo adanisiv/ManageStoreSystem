@@ -13,12 +13,16 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * One-off utility: creates the very first ADMIN account directly against
- * the same {@code data/} JSON files {@link ServerMain} reads from. Needed
- * because, by design, only an existing admin can create new employee
- * accounts (see {@code EMPLOYEE_ADD_REQUEST} in {@link ClientHandler}) — so
- * the first one has to be seeded outside the normal client/server flow.
- * Run this once before starting the server for the first time.
+ * A one-off utility that creates the very first ADMIN account. It writes
+ * directly to the same {@code data/} JSON files {@link ServerMain} reads
+ * from.
+ *
+ * <p>This is needed because, by design, only an existing admin can create
+ * new employee accounts (see {@code EMPLOYEE_ADD_REQUEST} in
+ * {@link ClientHandler}). That rule means the very first admin account
+ * cannot be created through the normal client/server flow — something has
+ * to seed it directly instead. Run this once, before starting the server
+ * for the first time.
  */
 public final class BootstrapAdmin {
 

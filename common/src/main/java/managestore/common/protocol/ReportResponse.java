@@ -3,11 +3,14 @@ package managestore.common.protocol;
 import java.util.List;
 
 /**
- * Report delivery is JSON either way — {@code wordFileBase64} is populated only when
- * the request asked for {@link ReportFormat#WORD}: the server renders the
- * same data into an actual .docx (via Apache POI) and Base64-encodes the
- * file bytes into this field so it can travel over the same line-based JSON
- * protocol as everything else, letting the client save it as a real Word file.
+ * A report is always delivered as JSON. {@code wordFileBase64} is only
+ * filled in when the request asked for {@link ReportFormat#WORD}.
+ *
+ * <p>In that case, the server also renders the same data into a real
+ * .docx file (using Apache POI). The file's bytes are then Base64-encoded
+ * into this field, so they can travel over the same line-based JSON
+ * protocol as everything else. The client can then decode them back into
+ * a real Word file.
  */
 public class ReportResponse {
 

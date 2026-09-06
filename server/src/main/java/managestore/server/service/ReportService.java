@@ -19,10 +19,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Aggregates {@link SalesRecord}s into a {@link ReportResponse}, grouped by
- * {@link ReportScope} (branch / product / category / one grand total), then
- * hands off to a {@link ReportExporter} implementation when the caller asked
- * for {@link ReportFormat#WORD} — the Strategy pattern in action.
+ * Groups a list of {@link SalesRecord}s into a {@link ReportResponse}. The
+ * grouping is controlled by {@link ReportScope}: by branch, by product, by
+ * category, or one grand total for everything.
+ *
+ * <p>When the caller asks for {@link ReportFormat#WORD}, this class also
+ * hands the grouped data off to a {@link ReportExporter} to build the actual
+ * Word document. Using an exporter object like this is the Strategy pattern:
+ * the export step is swappable without changing the grouping logic above it.
  */
 public class ReportService {
 
@@ -101,10 +105,10 @@ public class ReportService {
     }
 
     /**
-     * Case-insensitive on purpose: a branch id/SKU is effectively a code (unique regardless of
-     * case), but a category name like "Tops" reads as an ordinary word — someone typing "tops" in
-     * the Reports filter field getting back an empty table, with no hint why, looks like the
-     * report is broken rather than like a typo.
+     * The comparison here is case-insensitive on purpose. A branch id or SKU is really just a
+     * code, so its case doesn't matter. But a category name like "Tops" reads as an ordinary
+     * word. If someone types "tops" in the Reports filter field and gets an empty table back
+     * with no explanation, it looks like the report is broken — not like they made a typo.
      */
     private List<SalesRecord> filter(List<SalesRecord> records, ReportScope scope, String filterValue) {
         // No filter value — every record in scope stays.

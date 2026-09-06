@@ -6,11 +6,12 @@ import managestore.common.model.Product;
 import managestore.common.model.PurchaseResult;
 
 /**
- * Thin orchestration layer over the network: looks up the branch/product/
- * customer, then hands off to {@link Customer#purchase}, which is where the
- * actual Template Method + polymorphic discount logic lives. Kept separate
- * from {@link managestore.server.net.ClientHandler} so purchase logic is
- * testable without a socket.
+ * A thin layer between the network code and the actual purchase logic. It
+ * looks up the branch, product, and customer, then hands off to
+ * {@link Customer#purchase}. That method is where the real work happens:
+ * checking stock and calculating the discount for that type of customer.
+ * Keeping this separate from {@link managestore.server.net.ClientHandler}
+ * means the purchase logic can be tested without opening a socket.
  */
 public class PurchaseService {
 

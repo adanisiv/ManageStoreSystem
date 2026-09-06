@@ -2,6 +2,7 @@ package managestore.server.repository;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import managestore.server.model.Account;
 
@@ -18,7 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Same JSON-file-backed approach as {@link JsonFileEmployeeRepository}, for login credentials. */
+/** Stores login credentials the same way {@link JsonFileEmployeeRepository} stores employees: as a JSON file. */
 public class JsonFileAccountRepository implements AccountRepository {
 
     private static final Type LIST_TYPE = new TypeToken<List<Account>>() {
@@ -30,61 +31,72 @@ public class JsonFileAccountRepository implements AccountRepository {
 
     public JsonFileAccountRepository(Path file) {
         this.file = file;
-        // Populate the in-memory map from disk immediately, so the
-        // repository is ready to answer queries as soon as it's constructed.
+        // Load whatever is on disk right away, so the repository can answer
+        // queries as soon as it is created.
         load();
     }
 
     private synchronized void load() {
-        // Nothing to load yet (first run, file never created) — start with an
-        // empty in-memory map instead of treating a missing file as an error.
+        // First run: the file does not exist yet. That is not an error —
+        // just start with an empty map instead.
         if (!Files.exists(file)) {
             return;
         }
-        // Open the file for reading as UTF-8 text; try-with-resources closes
-        // it automatically once the block ends, even if an exception is thrown.
+        // Open the file as UTF-8 text. try-with-resources closes it for us
+        // when the block ends, even if something below throws.
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             // Parse the whole JSON array into a List<Account> in one call.
             List<Account> accounts = gson.fromJson(reader, LIST_TYPE);
             if (accounts != null) {
-                // Rebuild the lookup map keyed by username, one entry per account.
+                // Rebuild the lookup map, one entry per account, keyed by username.
                 for (Account account : accounts) {
                     byUsername.put(account.getUsername(), account);
                 }
             }
         } catch (IOException e) {
-            // Wrap the checked IOException in an unchecked one — a failure to
-            // read the data file is treated as fatal to startup, not something
-            // callers are expected to recover from.
+            // If we cannot read the data file, treat it as a startup failure
+            // instead of asking callers to handle it. So wrap it in an
+            // unchecked exception, since IOException is a checked one.
             throw new IllegalStateException("Failed to load " + file, e);
+        } catch (JsonParseException e) {
+            // The file exists and could be read, but the text inside it isn't valid JSON.
+            // Gson reports this as its own unchecked exception, not an IOException, so it
+            // needs its own catch to get the same clean failure message instead of a raw
+            // Gson stack trace with no context about which file caused it.
+            throw new IllegalStateException("Failed to load " + file + " (invalid JSON)", e);
         }
     }
 
-    /** Same crash-safe write-then-atomic-rename approach as {@link JsonFileEmployeeRepository#persist()}. */
+    /**
+     * Saves data the crash-safe way, the same as {@link JsonFileEmployeeRepository#persist()}:
+     * write everything to a new temp file first, then swap it in for the real file in one
+     * step. This way a crash or power loss during the write can never leave the accounts
+     * file half-written. Whoever reads it next sees either the complete old file or the
+     * complete new one, never something in between.
+     */
     private synchronized void persist() {
         try {
             // Make sure the folder the data file lives in actually exists
-            // before trying to write into it (e.g. on first run).
+            // before we try to write into it (e.g. on first run).
             if (file.getParent() != null) {
                 Files.createDirectories(file.getParent());
             }
             // Build the path for a temporary sibling file, e.g. "accounts.json.tmp".
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            // Write the FULL current snapshot of all accounts to the temp
-            // file first — the real file is not touched yet at this point.
+            // Write the full, current list of all accounts to the temp file
+            // first. The real file is not touched yet.
             try (Writer writer = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
                 gson.toJson(new java.util.ArrayList<>(byUsername.values()), LIST_TYPE, writer);
             }
-            // Only once the temp file is fully and successfully written, swap
-            // it in for the real file with a single atomic filesystem move.
-            // REPLACE_EXISTING allows overwriting the existing accounts file,
-            // and ATOMIC_MOVE guarantees the swap happens as one indivisible
-            // step — there is no in-between state where the file is half-written.
+            // Only once the temp file is fully written, swap it in for the
+            // real file. REPLACE_EXISTING lets this overwrite the existing
+            // accounts file. ATOMIC_MOVE makes the swap happen as one single
+            // step, so there is no moment where the file is only half-written.
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
-            // Any failure along the way (can't create the folder, can't
-            // write the temp file, can't move it) is treated as fatal —
-            // wrap it in an unchecked exception rather than silently losing data.
+            // Something failed along the way: making the folder, writing the
+            // temp file, or moving it. Treat this as a fatal error instead of
+            // silently losing data, by wrapping it in an unchecked exception.
             throw new IllegalStateException("Failed to save " + file, e);
         }
     }
@@ -96,22 +108,22 @@ public class JsonFileAccountRepository implements AccountRepository {
 
     @Override
     public synchronized void save(Account account) {
-        // Upsert into the in-memory map keyed by username...
+        // Add or replace the entry in the in-memory map, keyed by username.
         byUsername.put(account.getUsername(), account);
-        // ...then immediately rewrite the whole JSON file so the change survives a restart.
+        // Then immediately rewrite the whole JSON file, so this change is still there after a restart.
         persist();
     }
 
     @Override
     public synchronized void deleteByEmployeeNumber(String employeeNumber) {
-        // Accounts are keyed by username, not employee number, so first scan
-        // all accounts to find the one (if any) belonging to this employee
-        // and capture its username — orElse(null) means "not found".
+        // Accounts are keyed by username, not employee number. So first scan
+        // all accounts to find the one that belongs to this employee, and
+        // read its username. If none match, orElse(null) gives us null.
         String username = byUsername.values().stream()
                 .filter(account -> account.getEmployeeNumber().equals(employeeNumber))
                 .map(Account::getUsername)
                 .findFirst().orElse(null);
-        // Only remove and rewrite the file if a matching account was actually found and removed.
+        // Only rewrite the file if we actually found and removed a matching account.
         if (username != null && byUsername.remove(username) != null) {
             persist();
         }

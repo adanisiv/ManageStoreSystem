@@ -4,11 +4,14 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 
 /**
- * Envelope for every message on the wire: a {@link MessageType} tag plus a
- * raw JSON payload. Keeping the payload as a {@link JsonElement} (rather than
- * a generic type parameter, which Gson can't deserialize reliably due to
- * type erasure) lets the receiver decide which concrete DTO class to parse
- * it into based on {@link #getType()} — see {@link MessageChannel}.
+ * Envelope for every message sent over the wire: a {@link MessageType} tag
+ * plus a raw JSON payload.
+ *
+ * <p>The payload is kept as a {@link JsonElement}, not as a generic type
+ * parameter. Gson cannot reliably deserialize a generic type, because of
+ * type erasure. Keeping it as a raw JsonElement lets the receiver look at
+ * {@link #getType()} and decide for itself which concrete DTO class to
+ * parse the payload into. See {@link MessageChannel} for how that works.
  */
 public class Message {
 

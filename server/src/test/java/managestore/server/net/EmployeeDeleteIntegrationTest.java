@@ -44,7 +44,73 @@ class EmployeeDeleteIntegrationTest {
         SessionManager.getInstance().logout("deleteAdmin");
         SessionManager.getInstance().logout("deleteSeller");
         SessionManager.getInstance().logout("victim");
+        SessionManager.getInstance().logout("secondAdmin");
+        SessionManager.getInstance().logout("thirdAdmin");
         LogManager.getInstance().clear();
+    }
+
+    @Test
+    void aDeletedAdminsStillOpenConnectionLosesAdminPrivilegesImmediately() throws Exception {
+        // Before this was fixed, ClientHandler cached the logged-in employee's role once at
+        // login and never rechecked it. Three admins are used here, not two: with only two,
+        // deleting one down to a single remaining admin would separately be blocked by the
+        // "can't leave zero admins" guard, which would hide whether this specific fix is doing
+        // anything. With three, that guard doesn't apply -- two admins are still left either
+        // way -- so only this fix can be the reason the attempt below is refused.
+        //
+        // Admin A deletes admin B, while B's own socket stays open the whole time. B's cached
+        // role is still ADMIN, so with the old code B could still delete admin C -- someone
+        // they never lost any real permission over, since their own account was already gone.
+        // The fix rereads the caller's role from the repository on every admin-gated request
+        // instead of trusting the cached value, so B loses every admin privilege the instant
+        // they're deleted, not just the next time they try to log in.
+        StoreChain storeChain = new StoreChain();
+        InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
+        InMemoryEmployeeRepository employeeRepository = new InMemoryEmployeeRepository();
+        AuthService authService = new AuthService(accountRepository, employeeRepository);
+        authService.createAccount(
+                new Employee("ADMIN1", "First Admin", "1", "050-1", "ACC-1", null, Role.ADMIN), "deleteAdmin", "secret123");
+        authService.createAccount(
+                new Employee("ADMIN2", "Second Admin", "204812077", "050-2", "ACC-2", null, Role.ADMIN), "secondAdmin", "secret123");
+        authService.createAccount(
+                new Employee("ADMIN3", "Third Admin", "309825149", "050-3", "ACC-3", null, Role.ADMIN), "thirdAdmin", "secret123");
+
+        ServerContext context = new ServerContext(storeChain, authService, employeeRepository, gson);
+        ServerSocket serverSocket = ServerMain.bind(0);
+        int port = serverSocket.getLocalPort();
+        ExecutorService clientPool = Executors.newCachedThreadPool();
+        Thread serverThread = new Thread(() -> ServerMain.acceptLoop(serverSocket, context, clientPool));
+        serverThread.setDaemon(true);
+        serverThread.start();
+
+        try (MessageChannel firstAdmin = loginAs(port, "deleteAdmin");
+             MessageChannel secondAdmin = loginAs(port, "secondAdmin")) {
+
+            // First admin deletes the second admin, while the second admin's own connection
+            // stays open the whole time -- this is the key setup, not a disconnect-and-reconnect.
+            firstAdmin.send(Message.of(gson, MessageType.EMPLOYEE_DELETE_REQUEST, new EmployeeDeleteRequest("ADMIN2")));
+            EmployeeDeleteResponse deleteResponse = firstAdmin.receive().readPayload(gson, EmployeeDeleteResponse.class);
+            assertTrue(deleteResponse.isSuccess(), "the first admin should be able to delete the second: " + deleteResponse.getErrorMessage());
+
+            // The deleted admin's own still-open connection tries to delete a third admin --
+            // two admins (ADMIN1, ADMIN3) would still remain even if this succeeded, so the
+            // "don't leave zero admins" guard is not what should be stopping it.
+            secondAdmin.send(Message.of(gson, MessageType.EMPLOYEE_DELETE_REQUEST, new EmployeeDeleteRequest("ADMIN3")));
+            EmployeeDeleteResponse escalationAttempt = secondAdmin.receive().readPayload(gson, EmployeeDeleteResponse.class);
+            assertFalse(escalationAttempt.isSuccess(),
+                    "a deleted employee's cached role must not still work -- this must be refused, not carried out");
+
+            // Prove it wasn't carried out: the third admin is still there and can still log in.
+            firstAdmin.send(Message.of(gson, MessageType.EMPLOYEE_LIST_REQUEST, new Object()));
+            EmployeeListResponse list = firstAdmin.receive().readPayload(gson, EmployeeListResponse.class);
+            assertTrue(list.getEmployees().stream().anyMatch(e -> e.getEmployeeNumber().equals("ADMIN3")),
+                    "the third admin must not have been deleted by the stale-session attempt");
+        } finally {
+            serverSocket.close();
+            clientPool.shutdownNow();
+        }
+
+        assertTrue(authService.login("thirdAdmin", "secret123").isSuccess(), "the targeted admin must still be able to log in");
     }
 
     @Test

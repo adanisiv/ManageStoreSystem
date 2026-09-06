@@ -14,10 +14,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * sales, chat) calls {@code LogManager.getInstance().log(...)} directly
  * rather than threading a LogManager reference through every constructor.
  *
- * <p>In-memory only, same deliberate simplification as {@link
- * managestore.server.repository.SalesRecordRepository} — history resets on
- * server restart, which is an acceptable scope cut for this project (a real
- * deployment would flush entries to a file or DB).
+ * <p>This log is kept in memory only, the same simplification used in {@link
+ * managestore.server.repository.SalesRecordRepository}. The history is lost
+ * when the server restarts. That is an acceptable trade-off for this
+ * project — a real deployment would save entries to a file or database
+ * instead.
  */
 public final class LogManager {
 

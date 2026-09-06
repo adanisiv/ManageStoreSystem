@@ -164,11 +164,32 @@ independently testable.
   delete button render **only** for `Role.ADMIN`; the server independently re-checks the
   role on `EMPLOYEE_ADD_REQUEST` and `EMPLOYEE_DELETE_REQUEST`. Client-side gating is
   for usability; the server-side check is the actual security boundary.
+- **The server-side role check reads from the employee repository every time**, via
+  `ClientHandler.requireCurrentRole`, instead of trusting the role captured once at
+  login. Without that, an admin who gets deleted while their connection is still open
+  would keep every admin privilege for as long as the socket stays open — including the
+  ability to delete other admins, which could empty the whole system of admins with no
+  way to create a new one. `EmployeeDeleteIntegrationTest` proves this with three
+  admins: deleting one, then trying to act as that now-deleted admin over its still-open
+  connection, is refused immediately. A second, independent check also refuses to
+  delete an admin if it would leave zero admins in the system — redundant under normal
+  use (the two guards above already make that unreachable), but cheap insurance against
+  a future code path that reaches deletion some other way.
+- **Sales reports are branch-restricted for non-admins.** A seller or cashier asking for
+  a `BRANCH`-scoped report only ever sees their own branch's numbers, even if they name
+  a different one in the request — `ClientHandler.handleReportRequest` overrides the
+  filter to their own branch before generating it. An admin's filter choice is never
+  overridden. Reports by product or category are not restricted, since those don't
+  reveal how one specific branch compares to another.
 - **`PasswordPolicy`** — minimum length, requires a digit and a letter. Its own class so
   the rule can be pointed at and changed without touching auth logic.
 - **`PersonalIdValidator`** — implements the real Israeli ID checksum (a Luhn-style
   check digit over 9 digits, zero-padded). Not merely "9 digits" — an actually invalid
-  ID number is rejected.
+  ID number is rejected. Its `normalize()` method returns that same zero-padded form,
+  and `ClientHandler` stores every customer under it rather than whatever the admin
+  typed — "12345678" and "012345678" pass the checksum identically and are the same
+  person, so without normalizing first, they'd land under two different keys in
+  `CustomerDirectory` and the same person could be registered twice.
 - **`PhoneValidator`** — accepts Israeli landline/mobile shapes after stripping spaces
   and dashes; deliberately loose enough not to reject real numbers, strict enough to
   catch `"asdf"`.
@@ -297,9 +318,9 @@ same repository interfaces, so a database could replace them without touching a 
 | Domain model | `CustomerTest` (per-type discounts, the VIP floor-at-zero boundary, stock guard), `InventoryTest` (add/remove, overflow, observer notify/unregister), `CustomerDirectoryTest` |
 | Domain exceptions | `DomainExceptionTest` (8 — the data each exception carries, and that every one still matches the standard type it replaced) |
 | Transport | `MessageChannelTest` |
-| Services | `AuthServiceTest`, `SessionManagerTest`, `ChatMediatorTest` (14 — matching, queueing, callback, join, and every busy-guard), `ReportServiceTest` (11 — grouping, day filter, case-insensitive filter, both formats), `PasswordHasherTest`, `PersonalIdValidatorTest`, `PhoneValidatorTest`, `FullNameValidatorTest`, `AccountNumberValidatorTest`, `EmployeeNumberValidatorTest`, `LogManagerTest` |
+| Services | `AuthServiceTest`, `SessionManagerTest`, `ChatMediatorTest` (16 — matching, queueing, callback, join, every busy-guard, and login-time/duplicate-request queue delivery), `ReportServiceTest` (11 — grouping, day filter, case-insensitive filter, both formats), `PasswordHasherTest`, `PersonalIdValidatorTest`, `PhoneValidatorTest`, `FullNameValidatorTest`, `AccountNumberValidatorTest`, `EmployeeNumberValidatorTest`, `LogManagerTest` |
 | Persistence | `JsonFileEmployeeRepositoryTest`, `JsonFileAccountRepositoryTest` (round-trip through disk, delete, no temp file left behind) |
-| End-to-end over **real sockets** | `ServerMainIntegrationTest` (duplicate login), `LiveSyncIntegrationTest` (Observer push between two clients), `ChatIntegrationTest`, `RestockIntegrationTest`, `EmployeeAndLogIntegrationTest`, `EmployeeDeleteIntegrationTest`, `InputValidationIntegrationTest`, `LoggingCoverageIntegrationTest`, `MalformedRequestResilienceIntegrationTest` |
+| End-to-end over **real sockets** | `ServerMainIntegrationTest` (duplicate login), `LiveSyncIntegrationTest` (Observer push between two clients), `ChatIntegrationTest`, `RestockIntegrationTest`, `EmployeeAndLogIntegrationTest`, `EmployeeDeleteIntegrationTest` (including the stale-admin-session escalation fix), `InputValidationIntegrationTest`, `ReportPrivacyIntegrationTest`, `LoggingCoverageIntegrationTest`, `MalformedRequestResilienceIntegrationTest` |
 
 The integration tests start a real `ServerSocket`, connect real client sockets, and
 assert on real pushed messages — they exercise the actual `ClientHandler` wiring, not a

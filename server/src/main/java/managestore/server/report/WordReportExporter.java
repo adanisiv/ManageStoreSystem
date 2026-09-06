@@ -15,25 +15,28 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Renders a sales report as an actual .docx via Apache POI — a title, then a
- * table of the same lines {@link JsonReportExporter} would serialize, plus a
- * totals row.
+ * Builds a sales report as a real Word (.docx) file, using the Apache POI
+ * library. The finished document has a title at the top, then a table with
+ * the same report lines that {@link JsonReportExporter} would turn into
+ * JSON, plus one extra row at the bottom with the totals.
  */
 public class WordReportExporter implements ReportExporter {
 
     @Override
     public byte[] export(String title, List<ReportLineDto> lines, int totalQuantity, double totalRevenue) {
-        // XWPFDocument is POI's in-memory model of a .docx file — everything
-        // added to it below (paragraphs, tables, ...) becomes part of that
-        // document. try-with-resources closes/releases it when done.
+        // XWPFDocument is POI's object that represents a whole .docx file in
+        // memory. Everything we add to it below (paragraphs, tables, ...)
+        // becomes part of that document. try-with-resources closes it for us
+        // when we are done, even if something throws.
         try (XWPFDocument document = new XWPFDocument()) {
-            // Add the bold centered heading first...
+            // Add the bold, centered title line first...
             writeTitle(document, title);
             // ...then the data table right below it.
             writeTable(document, lines, totalQuantity, totalRevenue);
 
-            // Serialize the whole in-memory document out to the .docx binary
-            // format (a zip of XML parts) into an in-memory byte buffer.
+            // Convert the whole document into the actual .docx file format
+            // (which is really a zip file full of XML) and write those bytes
+            // into an in-memory buffer we can return.
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             document.write(out);
             return out.toByteArray();
@@ -43,12 +46,14 @@ public class WordReportExporter implements ReportExporter {
     }
 
     private void writeTitle(XWPFDocument document, String title) {
-        // Add a new, empty paragraph at the end of the document.
+        // Add a new, empty paragraph (like a new line) at the end of the document.
         XWPFParagraph titleParagraph = document.createParagraph();
-        // Center the paragraph horizontally on the page.
+        // Center this line horizontally on the page.
         titleParagraph.setAlignment(ParagraphAlignment.CENTER);
-        // A "run" is a span of text sharing one set of formatting; a
-        // paragraph needs at least one run to actually display any text.
+        // In Word, a "run" is a piece of text with its own formatting
+        // (bold, size, etc). A paragraph needs at least one run before any
+        // text will actually show up. Here we add the title text itself,
+        // make it bold, and set its font size to 16.
         XWPFRun run = titleParagraph.createRun();
         run.setText(title);
         run.setBold(true);
@@ -56,35 +61,37 @@ public class WordReportExporter implements ReportExporter {
     }
 
     private void writeTable(XWPFDocument document, List<ReportLineDto> lines, int totalQuantity, double totalRevenue) {
-        // Create the table with one header row, one row per report line, and
-        // one totals row at the end, each with 3 columns (label/qty/revenue).
-        // POI pre-fills every cell with an empty paragraph automatically.
+        // Create the table itself. It needs 3 columns (label, quantity,
+        // revenue) and one row for each of: the header, every report line,
+        // and the totals at the end. POI automatically fills every cell with
+        // an empty paragraph, ready for us to put text into.
         XWPFTable table = document.createTable(lines.size() + 2, 3);
 
-        // Row 0: column headers.
+        // Row 0 is the header row with the column names.
         setRow(table.getRow(0), "Label", "Quantity Sold", "Revenue");
-        // Rows 1..lines.size(): one row per report line, in the same order as the input list.
+        // Rows 1 through lines.size() hold one report line each, in the same order as the input list.
         for (int i = 0; i < lines.size(); i++) {
             ReportLineDto line = lines.get(i);
             setRow(table.getRow(i + 1), line.getLabel(), String.valueOf(line.getQuantitySold()),
                     formatCurrency(line.getRevenue()));
         }
-        // Final row: grand totals, using the precomputed values passed in
-        // rather than re-summing the lines here.
+        // The last row shows the grand totals. We use the totals that were
+        // already calculated and passed in, instead of adding up the lines again here.
         setRow(table.getRow(lines.size() + 1), "TOTAL", String.valueOf(totalQuantity), formatCurrency(totalRevenue));
     }
 
     private void setRow(XWPFTableRow row, String label, String quantity, String revenue) {
-        // getCell(n) fetches the existing (already created) cell at that
-        // column index; setText() replaces its contents with plain text.
+        // getCell(n) gets the cell that already exists at that column index.
+        // setText() replaces whatever is in that cell with our plain text.
         row.getCell(0).setText(label);
         row.getCell(1).setText(quantity);
         row.getCell(2).setText(revenue);
     }
 
     private String formatCurrency(double amount) {
-        // Force US-style formatting (dot as decimal separator) regardless of
-        // the server's default locale, and always show exactly 2 decimal places.
+        // Always format the number the US way (a dot for the decimal point)
+        // no matter what language or region the server is set to, and always
+        // show exactly 2 digits after the decimal point.
         return String.format(Locale.US, "%.2f", amount);
     }
 }

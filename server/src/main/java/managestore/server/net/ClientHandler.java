@@ -45,6 +45,7 @@ import managestore.common.protocol.MessageType;
 import managestore.common.protocol.PurchaseRequest;
 import managestore.common.protocol.PurchaseResponse;
 import managestore.common.protocol.ReportRequest;
+import managestore.common.protocol.ReportScope;
 import managestore.common.protocol.ReportResponse;
 import managestore.common.protocol.RestockRequest;
 import managestore.common.protocol.RestockResponse;
@@ -71,15 +72,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * One thread per connected client. Reads {@link Message}s from its socket in
- * a loop and dispatches by {@link MessageType}.
+ * One thread per connected client. This class reads {@link Message}s from
+ * its socket in a loop and dispatches each one by its {@link MessageType}.
  *
- * <p>On successful login this handler registers itself as an
- * {@link InventoryObserver} (on its own branch's inventory) and a
- * {@link CustomerDirectoryObserver} (network-wide) — the Observer pattern's
- * concrete wiring: every other connected client's ClientHandler is also
- * registered the same way, so one client's change is pushed to all of them
- * automatically the moment it happens, with no polling.
+ * <p>Once a client logs in successfully, its handler registers itself as an
+ * {@link InventoryObserver} (for its own branch's inventory) and as a
+ * {@link CustomerDirectoryObserver} (network-wide). This is the Observer
+ * pattern in action: every connected client's handler registers the same
+ * way, so when one client makes a change, every other client is pushed the
+ * update automatically, the moment it happens, with no polling needed.
  */
 public class ClientHandler implements Runnable, ChatEndpoint {
 
@@ -87,18 +88,21 @@ public class ClientHandler implements Runnable, ChatEndpoint {
 
     private final Socket socket;
     private final ServerContext context;
-    // Unique per connection (not per employee) — identifies this specific socket/session to
-    // SessionManager, so the same employee logging in from a second computer doesn't reuse it.
+    // This id is unique per connection, not per employee. It identifies this specific
+    // socket/session to SessionManager, so the same employee logging in from a second
+    // computer gets a different session id, not a reused one.
     private final String sessionId = UUID.randomUUID().toString();
 
-    // volatile because getLoggedInEmployee() may be read from other threads (e.g. another
-    // ClientHandler pushing a chat message), while this field is only written from this handler's own thread.
+    // These fields are volatile because getLoggedInEmployee() can be read from other threads
+    // (for example, another ClientHandler pushing a chat message). Only this handler's own
+    // thread ever writes to them.
     private volatile String loggedInUsername;
     private volatile Employee loggedInEmployee;
     private MessageChannel channel;
 
-    // Only set once a login has subscribed this handler to live inventory/customer updates;
-    // kept here so cleanupOnDisconnect() knows what (if anything) to unregister.
+    // These three are only set once a login has subscribed this handler to live
+    // inventory/customer updates. They are kept here so cleanupOnDisconnect() knows what,
+    // if anything, needs to be unregistered.
     private InventoryObserver inventoryObserver;
     private Branch subscribedBranch;
     private CustomerDirectoryObserver customerDirectoryObserver;
@@ -114,34 +118,36 @@ public class ClientHandler implements Runnable, ChatEndpoint {
 
     @Override
     public void run() {
-        // The try-with-resources closes the underlying socket/streams as soon as this method
-        // returns, however that happens (normal disconnect or an exception).
+        // The try-with-resources block closes the underlying socket and streams as soon as
+        // this method returns, no matter how it returns: a normal disconnect or an exception.
         try (MessageChannel opened = new MessageChannel(socket, context.getGson())) {
             this.channel = opened;
             Message message;
-            // Blocks on receive() waiting for the next message; a null return means the client
-            // closed the connection cleanly, which ends the loop.
+            // receive() blocks here until the next message arrives. A null return means the
+            // client closed the connection cleanly, which ends this loop.
             while ((message = opened.receive()) != null) {
                 dispatchSafely(message);
             }
         } catch (IOException e) {
-            // A broken/reset connection also ends up here — logged at FINE since this is routine,
-            // not a bug (clients disconnect all the time).
+            // A broken or reset connection also lands here. This is logged at FINE, not a
+            // warning, because it's routine — clients disconnect all the time, it's not a bug.
             LOG.log(Level.FINE, "Connection closed: " + e.getMessage());
         } finally {
-            // Always run cleanup, whether the loop ended normally or via exception, so a dropped
-            // connection still unregisters this handler from every observer/session it joined.
+            // Always run cleanup, whether the loop ended normally or through an exception. This
+            // way a dropped connection still unregisters this handler from every observer and
+            // chat session it had joined.
             cleanupOnDisconnect();
         }
     }
 
     /**
-     * Runs {@link #dispatch} guarded against any unexpected {@link RuntimeException}
-     * (a malformed payload, an invalid enum value in a request, a bug in a handler)
-     * so that one bad message reports an error back to this client instead of
-     * silently killing their whole session — every other connected client is
-     * completely unaffected either way, since each has its own thread, but a
-     * client shouldn't lose their session over one bad request.
+     * Runs {@link #dispatch}, but catches any unexpected {@link RuntimeException} first —
+     * for example a malformed payload, an invalid enum value in a request, or a bug in a
+     * handler. That way one bad message just reports an error back to this client, instead
+     * of silently killing their whole session.
+     *
+     * <p>Every other connected client already has its own thread, so they were never at risk
+     * either way. But a client still shouldn't lose their own session over one bad request.
      */
     private void dispatchSafely(Message message) {
         try {
@@ -152,10 +158,10 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
     }
 
-    // Central request router: every message this client sends comes through here exactly once,
-    // matched by its MessageType and handed off to the one handler method that knows how to
-    // process that specific request. Adding a new request type means adding both a case here
-    // and its handleXxx method below.
+    // This is the central request router. Every message this client sends passes through here
+    // exactly once. It is matched by its MessageType and handed off to the one handler method
+    // that knows how to process that specific request. Adding a new request type means adding
+    // both a case here and its handleXxx method below.
     private void dispatch(Message message) {
         switch (message.getType()) {
             case LOGIN_REQUEST:
@@ -220,18 +226,19 @@ public class ClientHandler implements Runnable, ChatEndpoint {
 
     // ---- login / logout -------------------------------------------------
 
-    // Handles LOGIN_REQUEST: checks the username/password against AuthService, then — only on
-    // success — claims this username's single-session slot and wires this handler up to receive
-    // live updates, before sending the LOGIN_RESPONSE back either way.
+    // Handles LOGIN_REQUEST. It checks the username and password against AuthService. Only if
+    // that succeeds does it also claim this username's single-session slot and wire this
+    // handler up to receive live updates. Either way, a LOGIN_RESPONSE is sent back at the end.
     private void handleLogin(Message message) {
         LoginRequest request = message.readPayload(context.getGson(), LoginRequest.class);
         LoginResponse response = context.getAuthService().login(request.getUsername(), request.getPassword());
 
         if (response.isSuccess()) {
-            // Credentials were valid, but a username may only be logged in from one place at a
-            // time — tryLogin enforces that by atomically claiming the session slot for this
-            // connection's sessionId. If another connection already holds it, this login is
-            // downgraded to a failure even though the password was correct.
+            // The credentials were valid, but a username may only be logged in from one place
+            // at a time. tryLogin enforces that rule: it claims the session slot for this
+            // connection's sessionId as one atomic step. If another connection already holds
+            // that slot, this login is turned into a failure, even though the password was
+            // actually correct.
             boolean sessionAcquired = SessionManager.getInstance().tryLogin(request.getUsername(), sessionId);
             if (!sessionAcquired) {
                 response = LoginResponse.failure("This user is already logged in on another computer");
@@ -278,9 +285,10 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         context.getChatMediator().register(loggedInEmployee, this);
     }
 
-    // Undoes everything subscribeToLiveUpdates set up, plus releases the session slot. Called on
-    // an explicit LOGOUT message and also from run()'s finally block on any disconnect, so this
-    // must be safe to call even for a client that never logged in (all the null checks below).
+    // Undoes everything subscribeToLiveUpdates set up, and also releases the session slot.
+    // This runs both on an explicit LOGOUT message and from run()'s finally block on any
+    // disconnect. That means it must be safe to call even for a client that never logged in
+    // at all — hence all the null checks below.
     private void cleanupOnDisconnect() {
         if (loggedInEmployee != null) {
             context.getChatMediator().unregister(loggedInEmployee.getEmployeeNumber());
@@ -321,9 +329,10 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 new InventorySnapshotResponse(subscribedBranch.getId(), items)));
     }
 
-    // Callback registered as this handler's InventoryObserver (see subscribeToLiveUpdates):
-    // fires whenever the subscribed branch's stock changes, from ANY client's action, and pushes
-    // the new quantity to this client so its inventory view stays live without polling.
+    // This is the callback registered as this handler's InventoryObserver (see
+    // subscribeToLiveUpdates). It fires whenever the subscribed branch's stock changes, from
+    // any client's action, and pushes the new quantity to this client. That's what keeps this
+    // client's inventory view live, without it needing to poll.
     private void pushInventoryUpdate(String branchId, Product product, int newQuantity) {
         // The socket may already be gone (client disconnected) while this observer is still
         // registered momentarily — guard against sending on a closed/null channel.
@@ -338,9 +347,10 @@ public class ClientHandler implements Runnable, ChatEndpoint {
 
     // ---- purchases ----------------------------------------------------------
 
-    // Handles PURCHASE_REQUEST: looks up the product and customer named in the request, then asks
-    // PurchaseService to actually sell the product (applying any discount, decrementing stock),
-    // records the sale, logs it, and reports back the amounts charged and the branch's new stock level.
+    // Handles PURCHASE_REQUEST. It looks up the product and customer named in the request,
+    // then asks PurchaseService to actually sell the product — applying any discount and
+    // reducing stock. After that it records the sale, logs it, and reports back the amount
+    // charged and the branch's new stock level.
     private void handlePurchaseRequest(Message message) {
         if (!requireLoginAndBranch()) {
             return;
@@ -349,9 +359,10 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         Product product = context.getStoreChain().getProduct(request.getSku());
         Customer customer = context.getStoreChain().getCustomerDirectory().get(request.getCustomerPersonalId());
 
-        // Validate both lookups before touching PurchaseService — an unknown SKU or personal ID
-        // is a normal, expected failure (typo, stale client cache), not a bug, so it's reported
-        // back as a PURCHASE_RESPONSE failure rather than thrown as an exception.
+        // Both lookups are checked before PurchaseService is touched at all. An unknown SKU or
+        // personal ID is a normal, expected failure — a typo, or a stale client cache — not a
+        // bug. So it is reported back as a PURCHASE_RESPONSE failure, not thrown as an
+        // exception.
         if (product == null) {
             channel.send(Message.of(context.getGson(), MessageType.PURCHASE_RESPONSE,
                     PurchaseResponse.failure("Unknown product: " + request.getSku())));
@@ -425,9 +436,10 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_LIST_RESPONSE, new CustomerListResponse(dtos)));
     }
 
-    // Handles CUSTOMER_ADD_REQUEST: validates every field, builds the right Customer subtype via
-    // the factory (based on the requested CustomerType), registers it, logs it, and reports success
-    // or a specific failure reason back to the requesting client.
+    // Handles CUSTOMER_ADD_REQUEST. It validates every field, then builds the right Customer
+    // subtype through the factory, based on the requested CustomerType. It then registers the
+    // new customer, logs it, and reports success — or a specific failure reason — back to the
+    // requesting client.
     private void handleCustomerAddRequest(Message message) {
         if (!requireLogin()) {
             return;
@@ -440,23 +452,29 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             requireValidPersonalId(request.getPersonalId());
             requireValidPhone(request.getPhone());
             CustomerType type = CustomerType.valueOf(request.getCustomerType());
-            Customer customer = CustomerFactory.create(type, request.getPersonalId(), request.getFullName(), request.getPhone());
+            // Normalize to the full 9-digit, zero-padded form before storing it. "12345678" and
+            // "012345678" both pass the checksum and refer to the same person, but without this
+            // they would be stored under two different keys, and CustomerDirectory would never
+            // notice the same person was registered twice.
+            String normalizedPersonalId = PersonalIdValidator.normalize(request.getPersonalId());
+            Customer customer = CustomerFactory.create(type, normalizedPersonalId, request.getFullName(), request.getPhone());
             context.getStoreChain().getCustomerDirectory().add(customer);
             LogManager.getInstance().log(new LogEvent(LogType.CUSTOMER_REGISTERED, loggedInEmployee.getEmployeeNumber(),
                     "Registered " + type + " customer " + customer.getPersonalId() + " (" + customer.getFullName() + ")"));
             channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_ADD_RESPONSE, CustomerAddResponse.success()));
         } catch (IllegalArgumentException e) {
-            // Previously only sendError (the global ERROR channel) reported this — CustomersPanel
-            // itself had no direct signal that its own request specifically failed, only an
-            // easy-to-miss generic popup with no connection back to the form still sitting there
-            // with the rejected input in it. A dedicated response, same as EMPLOYEE_ADD_RESPONSE,
-            // lets the form show the failure inline, right where the user is already looking.
+            // This used to be reported only through sendError, the generic ERROR channel.
+            // That meant CustomersPanel had no direct signal that its own request had failed —
+            // just an easy-to-miss popup, disconnected from the form that still had the
+            // rejected input sitting in it. A dedicated response, the same idea as
+            // EMPLOYEE_ADD_RESPONSE, lets the form show the failure right where the user is
+            // already looking.
             channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_ADD_RESPONSE,
                     CustomerAddResponse.failure(e.getMessage())));
         } catch (IllegalStateException e) {
-            // CustomerDirectory.add throws this for a duplicate personal ID — a different
-            // exception type than the validators above use, but the same "tell this form
-            // specifically" fix applies.
+            // CustomerDirectory.add throws this one for a duplicate personal ID. It's a
+            // different exception type than the validators above use, but the same fix
+            // applies: tell this specific form what went wrong.
             channel.send(Message.of(context.getGson(), MessageType.CUSTOMER_ADD_RESPONSE,
                     CustomerAddResponse.failure(e.getMessage())));
         }
@@ -504,7 +522,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
         // Role gate: only an ADMIN may create new employee accounts. Anyone else gets a
         // dedicated failure response rather than the request silently doing nothing.
-        if (loggedInEmployee.getRole() != Role.ADMIN) {
+        if (!requireCurrentRole(Role.ADMIN).isPresent()) {
             channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_ADD_RESPONSE,
                     EmployeeAddResponse.failure("Only an admin can add employees")));
             return;
@@ -519,10 +537,11 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             requireValidAccountNumber(request.getAccountNumber());
             requireValid(request.getBranchId(), "Branch");
             requireValid(request.getUsername(), "Username");
-            // AuthService.createAccount already rejects a taken *username*, but nothing was
-            // checking the employee number itself — re-adding an existing one would silently
-            // overwrite that employee's profile (JsonFileEmployeeRepository.save is a keyed
-            // upsert), while a second, unrelated account could still end up pointing at it.
+            // AuthService.createAccount already rejects a taken username. But nothing was
+            // checking the employee number itself. Re-adding an existing employee number would
+            // silently overwrite that employee's profile, because JsonFileEmployeeRepository.save
+            // is a keyed upsert — it replaces whatever was already saved under that key. Meanwhile
+            // a second, unrelated account could still end up pointing at that same employee number.
             if (context.getEmployeeRepository().findByEmployeeNumber(request.getEmployeeNumber()).isPresent()) {
                 throw new DuplicateEmployeeException(request.getEmployeeNumber());
             }
@@ -549,12 +568,15 @@ public class ClientHandler implements Runnable, ChatEndpoint {
     }
 
     /**
-     * Admin-only, same as add. Doesn't force-disconnect the deleted employee if they're currently
-     * logged in — their live session just keeps working until they log out or disconnect — but
-     * they can never log back in afterward: {@link managestore.server.service.AuthService#login}
-     * already refuses any account whose employee record is gone (see its "Account is not linked
-     * to an employee record" case), so removing the Employee (and its Account, so the username is
-     * fully freed, not just orphaned) here is enough without adding a way to kill a live socket
+     * Admin-only, the same as adding an employee. This does not force-disconnect the deleted
+     * employee if they are currently logged in — their live session just keeps working until
+     * they log out or disconnect on their own.
+     *
+     * <p>But they can never log back in afterward. {@link
+     * managestore.server.service.AuthService#login} already refuses any account whose employee
+     * record is gone (see its "Account is not linked to an employee record" case). So removing
+     * the Employee record, and its Account, here is enough on its own. The username is fully
+     * freed, not just left orphaned, and there is no need to add a way to kill a live socket
      * from another thread.
      */
     private void handleEmployeeDeleteRequest(Message message) {
@@ -562,7 +584,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             return;
         }
         // Role gate, same pattern as add: only an admin may delete an employee.
-        if (loggedInEmployee.getRole() != Role.ADMIN) {
+        if (!requireCurrentRole(Role.ADMIN).isPresent()) {
             channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_DELETE_RESPONSE,
                     EmployeeDeleteResponse.failure("Only an admin can delete employees")));
             return;
@@ -570,9 +592,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         EmployeeDeleteRequest request = message.readPayload(context.getGson(), EmployeeDeleteRequest.class);
         String targetNumber = request.getEmployeeNumber();
 
-        // Guard against an admin deleting the very account they're currently logged in as —
-        // that would immediately orphan this session (see this method's javadoc above about
-        // AuthService.login refusing accounts with no linked employee record).
+        // This guards against an admin deleting the very account they're currently logged in
+        // as. That would immediately orphan this session — see this method's javadoc above
+        // about AuthService.login refusing accounts with no linked employee record.
         if (targetNumber != null && targetNumber.equals(loggedInEmployee.getEmployeeNumber())) {
             channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_DELETE_RESPONSE,
                     EmployeeDeleteResponse.failure("You can't delete your own account while logged in as it")));
@@ -588,8 +610,27 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         }
 
         Employee employee = target.get();
-        // Removes both the Employee record and its Account, freeing the username entirely
-        // (see this method's javadoc above for why a live session doesn't need to be killed here).
+        // A second, independent safety net: refuse to delete an admin if it would leave zero
+        // admins in the system. Walking through the two guards above shows this can never
+        // actually trigger today — you can't delete yourself, and requireCurrentRole above
+        // guarantees the caller is genuinely an admin right now, so the caller always counts
+        // as one admin distinct from the target, and at least one admin (the caller) is always
+        // left after any single deletion. This check costs nothing to keep, and it keeps
+        // protecting the same invariant even if a future change (a bulk-delete action, a
+        // scripted cleanup job) reaches this code some other way that doesn't go through
+        // those two guards first.
+        if (employee.getRole() == Role.ADMIN) {
+            long remainingAdmins = context.getEmployeeRepository().findAll().stream()
+                    .filter(e -> e.getRole() == Role.ADMIN)
+                    .count();
+            if (remainingAdmins <= 1) {
+                channel.send(Message.of(context.getGson(), MessageType.EMPLOYEE_DELETE_RESPONSE,
+                        EmployeeDeleteResponse.failure("Can't delete the last remaining admin account")));
+                return;
+            }
+        }
+        // Removes both the Employee record and its Account, which frees the username entirely.
+        // See this method's javadoc above for why a live session doesn't need to be killed here.
         context.getAuthService().deleteAccount(targetNumber);
         if (employee.getBranchId() != null) {
             Branch branch = context.getStoreChain().getBranch(employee.getBranchId());
@@ -609,10 +650,10 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         if (!requireLogin()) {
             return;
         }
-        // Role gate: unlike EMPLOYEE_LIST_REQUEST, this one uses sendError (the generic ERROR
-        // channel) rather than a dedicated *_RESPONSE failure, since there's no LogListResponse
-        // failure variant to populate.
-        if (loggedInEmployee.getRole() != Role.ADMIN) {
+        // This is a role gate. Unlike EMPLOYEE_LIST_REQUEST, it uses sendError, the generic
+        // ERROR channel, instead of a dedicated *_RESPONSE failure. That's because
+        // LogListResponse has no failure variant to fill in.
+        if (!requireCurrentRole(Role.ADMIN).isPresent()) {
             sendError("Only an admin can view the system log");
             return;
         }
@@ -658,17 +699,27 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             sendError("Invalid report date: " + request.getDay());
             return;
         }
+        // A non-admin asking for a per-branch report can only see their own branch's numbers,
+        // not every branch's. Without this, any seller or cashier could read another branch's
+        // sales figures just by typing a different branch id into the filter field — reports
+        // by product or category still show network-wide totals, since those don't reveal how
+        // one specific branch is doing compared to another.
+        String filterValue = request.getFilterValue();
+        if (request.getScope() == ReportScope.BRANCH && loggedInEmployee.getRole() != Role.ADMIN) {
+            filterValue = loggedInEmployee.getBranchId();
+        }
         ReportResponse response = context.getReportService().generate(context.getSalesRecordRepository().all(),
-                request.getScope(), request.getFilterValue(), request.getFormat(), day);
+                request.getScope(), filterValue, request.getFormat(), day);
         channel.send(Message.of(context.getGson(), MessageType.REPORT_RESPONSE, response));
     }
 
     // ---- chat ----------------------------------------------------------
 
-    // Handles CHAT_REQUEST: starts a chat either with one specific employee (a direct chat) or
-    // with whichever employee at the target branch picks it up, depending on which field the
-    // request populated. All the actual pairing/notification logic lives in ChatMediator — this
-    // handler just forwards the request and turns a "no" into an ERROR message for this client.
+    // Handles CHAT_REQUEST. It starts a chat either with one specific employee (a direct chat),
+    // or with whichever employee at the target branch picks it up — depending on which field
+    // the request filled in. All the actual pairing and notification logic lives in
+    // ChatMediator. This handler just forwards the request, and turns a "no" into an ERROR
+    // message for this client.
     private void handleChatRequest(Message message) {
         if (!requireLogin()) {
             return;
@@ -709,7 +760,7 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         if (!requireLogin()) {
             return;
         }
-        if (loggedInEmployee.getRole() != Role.SHIFT_MANAGER) {
+        if (!requireCurrentRole(Role.SHIFT_MANAGER).isPresent()) {
             sendError("Only a shift manager can join an existing chat");
             return;
         }
@@ -756,13 +807,41 @@ public class ClientHandler implements Runnable, ChatEndpoint {
         return true;
     }
 
+    /**
+     * Checks this connection's role against the employee repository right now, instead of
+     * trusting {@code loggedInEmployee.getRole()} as captured once at login time.
+     *
+     * <p>Without this, a role check that only reads the cached field is still true even after
+     * another admin changes or deletes that employee's record. Two admins logged in at once
+     * make this concrete: if admin A deletes admin B while B is still connected, B's own socket
+     * still holds a cached ADMIN role and could otherwise go on adding and deleting employees —
+     * including deleting A too, leaving zero admins anywhere with no way to create a new one.
+     * Re-reading the role from the repository on every privileged action closes that window.
+     *
+     * @return the employee's current record if they still exist and their role right now is
+     *     exactly {@code requiredRole}; empty otherwise, meaning the caller should refuse the request.
+     */
+    private Optional<Employee> requireCurrentRole(Role requiredRole) {
+        if (loggedInEmployee == null) {
+            return Optional.empty();
+        }
+        Optional<Employee> current = context.getEmployeeRepository().findByEmployeeNumber(loggedInEmployee.getEmployeeNumber());
+        if (!current.isPresent() || current.get().getRole() != requiredRole) {
+            return Optional.empty();
+        }
+        return current;
+    }
+
     private void sendError(String message) {
         channel.send(Message.of(context.getGson(), MessageType.ERROR, new ErrorMessage(message)));
     }
 
-    /** Input validation for the Employee/Customer add-request handlers. {@link ValidationException} is an
-     *  {@link IllegalArgumentException}, so it still flows into the same catch block each handler already has
-     *  for reporting a rejected request — while also naming which field was at fault, for callers that care. */
+    /**
+     * Input validation shared by the Employee and Customer add-request handlers.
+     * {@link ValidationException} is a kind of {@link IllegalArgumentException}, so it still
+     * flows into the same catch block each handler already has for reporting a rejected
+     * request. It also names which field was at fault, for callers that care which one.
+     */
     private void requireValid(String value, String fieldName) {
         if (value == null || value.trim().isEmpty()) {
             throw new ValidationException(fieldName, fieldName + " is required");

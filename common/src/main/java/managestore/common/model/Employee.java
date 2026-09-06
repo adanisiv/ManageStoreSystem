@@ -3,9 +3,9 @@ package managestore.common.model;
 import java.util.Objects;
 
 /**
- * A network employee. Login credentials are intentionally NOT stored here —
- * that is an account/security concern owned by the server's AuthService, kept
- * separate from this plain profile data (separation of concerns).
+ * A network employee. This class does not store login credentials on
+ * purpose. Login is a security concern, handled by the server's
+ * AuthService. This class only holds plain profile data.
  */
 public class Employee {
 

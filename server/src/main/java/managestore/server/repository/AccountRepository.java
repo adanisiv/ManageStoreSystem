@@ -6,12 +6,13 @@ import java.util.Optional;
 
 public interface AccountRepository {
 
-    // Looks up login credentials by username; empty if no account has that username.
+    // Looks up login credentials by username. Returns empty if no account has that username.
     Optional<Account> findByUsername(String username);
 
-    // Upsert: creates the account if its username is new, otherwise overwrites the existing one.
+    // Saves the account. If the username is new, this creates a new account.
+    // If the username already exists, this overwrites that account.
     void save(Account account);
 
-    /** No-op if no account is linked to that employee number. */
+    /** Does nothing if no account is linked to that employee number. */
     void deleteByEmployeeNumber(String employeeNumber);
 }

@@ -48,8 +48,8 @@ public class EmployeesPanel {
         table.getColumns().add(column("Branch", "branchId"));
         table.getColumns().add(column("Role", "role"));
 
-        // Whenever the server answers a roster request (the initial one below, or a
-        // manual refresh), replace the table's contents wholesale with the latest list.
+        // Whenever the server answers a roster request — the initial one below, or a
+        // manual refresh — replace the whole table with the latest list.
         connection.on(MessageType.EMPLOYEE_LIST_RESPONSE, message -> {
             EmployeeListResponse response = message.readPayload(connection.getGson(), EmployeeListResponse.class);
             table.getItems().setAll(response.getEmployees());
@@ -57,10 +57,11 @@ public class EmployeesPanel {
         // Initial load of the roster when this panel is first built.
         connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
 
-        // Unlike Inventory/Customers, the roster has no live push (nothing subscribes to employee
-        // additions), so if a second admin is looking at this tab while a first admin adds someone,
-        // the second admin has no way to see it short of logging out and back in — a Refresh button
-        // is the minimal fix, matching the one LogsPanel already has for the same reason.
+        // Unlike Inventory or Customers, the roster has no live push. Nothing subscribes
+        // to employee additions. So if a second admin has this tab open while a first
+        // admin adds someone, the second admin cannot see the change without logging
+        // out and back in. A Refresh button is the simple fix here, the same one
+        // LogsPanel already uses for the same reason.
         Button refreshButton = new Button("Refresh");
         refreshButton.setOnAction(e -> connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object()));
         HBox refreshBar = new HBox(8, refreshButton);
@@ -78,8 +79,8 @@ public class EmployeesPanel {
         if (currentEmployee.getRole() == Role.ADMIN) {
             pane.setBottom(buildAddEmployeeForm());
         } else {
-            // Non-admins see an explanatory note instead of the form, so it's clear
-            // why the option isn't there rather than looking like a missing feature.
+            // Non-admins see an explanatory note instead of the form. This makes clear
+            // why the option is missing, instead of looking like a bug.
             Label adminOnlyNote = new Label("Only an ADMIN account can add new employees — log in as admin (e.g. admin / Admin1234 on the demo server) to use this form.");
             adminOnlyNote.setWrapText(true);
             adminOnlyNote.setStyle("-fx-text-fill: -muted; -fx-padding: 10px;");
@@ -89,18 +90,21 @@ public class EmployeesPanel {
     }
 
     /**
-     * Admin-only, matching the add form. Disabled unless a row is selected, and also disabled for
-     * the admin's own row — the server refuses self-deletion too (a still-logged-in admin
-     * shouldn't be able to delete the account they're using right now), but catching that here
-     * avoids a pointless round trip and confirmation dialog for a request that's certain to be
-     * rejected anyway.
+     * Admin-only, same as the add form. The button is disabled unless a row is
+     * selected, and also disabled for the admin's own row.
+     *
+     * The server refuses self-deletion too — a logged-in admin should not be able
+     * to delete the account they are currently using. We also check it here so we
+     * skip a pointless round trip and confirmation dialog for a request that would
+     * only get rejected anyway.
      */
     private Button buildDeleteButton(TableView<Employee> table) {
         Button deleteButton = new Button("Delete Selected");
         deleteButton.getStyleClass().add("secondary");
-        // The button stays disabled whenever nothing is selected, or the selected row
-        // is the logged-in admin's own account. This binding re-evaluates automatically
-        // every time the table selection changes.
+        // The button stays disabled when nothing is selected, or when the selected
+        // row is the logged-in admin's own account. This binding is a JavaFX feature
+        // that re-checks itself automatically every time the table selection changes,
+        // so we don't have to update the button by hand.
         deleteButton.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(
                 () -> {
                     Employee selected = table.getSelectionModel().getSelectedItem();
@@ -108,8 +112,9 @@ public class EmployeesPanel {
                 },
                 table.getSelectionModel().selectedItemProperty()));
 
-        // Reply to our own EMPLOYEE_DELETE_REQUEST: on success, re-fetch the roster so
-        // the deleted employee disappears from the table; on failure, show why.
+        // This is the reply to our own EMPLOYEE_DELETE_REQUEST. On success, we re-fetch
+        // the roster so the deleted employee disappears from the table. On failure,
+        // we show why.
         connection.on(MessageType.EMPLOYEE_DELETE_RESPONSE, message -> {
             EmployeeDeleteResponse response = message.readPayload(connection.getGson(), EmployeeDeleteResponse.class);
             if (response.isSuccess()) {
@@ -119,8 +124,8 @@ public class EmployeesPanel {
             }
         });
 
-        // "Delete Selected" clicked: confirm with the user before doing anything
-        // irreversible, then only send the delete request if they explicitly click OK.
+        // "Delete Selected" clicked. Confirm with the user before doing anything
+        // irreversible. Only send the delete request if they explicitly click OK.
         deleteButton.setOnAction(e -> {
             Employee selected = table.getSelectionModel().getSelectedItem();
             if (selected == null) {
@@ -153,7 +158,7 @@ public class EmployeesPanel {
         TextField accountField = new TextField();
         accountField.setPromptText("Account #");
         ChoiceBox<BranchDto> branchChoice = new ChoiceBox<>();
-        // Populate the branch dropdown once the server answers, defaulting to the first branch.
+        // Fill in the branch dropdown once the server answers, defaulting to the first branch.
         connection.on(MessageType.BRANCH_LIST_RESPONSE, message -> {
             BranchListResponse response = message.readPayload(connection.getGson(), BranchListResponse.class);
             branchChoice.setItems(FXCollections.observableArrayList(response.getBranches()));
@@ -168,11 +173,16 @@ public class EmployeesPanel {
         usernameField.setPromptText("Username");
         PasswordRevealField passwordField = new PasswordRevealField();
         passwordField.setPromptText("Password");
+        // The actual rule is enforced server-side by PasswordPolicy, and a rejected password
+        // already comes back with a specific reason. This tooltip just makes that same rule
+        // visible up front on the admin screen, instead of only after a failed attempt.
+        javafx.scene.control.Tooltip.install(passwordField.getNode(),
+                new javafx.scene.control.Tooltip("Password policy: at least 6 characters, including at least one letter and one digit."));
         Button addButton = new Button("Add Employee");
         Label statusLabel = new Label();
         statusLabel.getStyleClass().add("status-label");
 
-        // Reply to our own EMPLOYEE_ADD_REQUEST (sent from the "Add Employee" button below).
+        // This is the reply to our own EMPLOYEE_ADD_REQUEST, sent from the "Add Employee" button below.
         connection.on(MessageType.EMPLOYEE_ADD_RESPONSE, message -> {
             EmployeeAddResponse response = message.readPayload(connection.getGson(), EmployeeAddResponse.class);
             UiUtil.setStatus(statusLabel, response.isSuccess(),
@@ -180,10 +190,10 @@ public class EmployeesPanel {
             if (response.isSuccess()) {
                 // Refresh the roster table so the new employee shows up immediately.
                 connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
-                // Clear the whole form, not just the obviously-sensitive password field: leaving
-                // the previous employee's number/personal ID/username sitting there invites
-                // clicking "Add Employee" again by habit and hitting the now-rejected duplicate
-                // employee number, instead of just typing the next one.
+                // Clear the whole form, not just the password field. If we left the
+                // previous employee's number, personal ID, and username sitting there,
+                // the user might click "Add Employee" again out of habit and hit a
+                // duplicate-employee-number error, instead of typing a fresh entry.
                 numberField.clear();
                 nameField.clear();
                 personalIdField.clear();
@@ -192,18 +202,22 @@ public class EmployeesPanel {
                 usernameField.clear();
                 passwordField.clear();
             }
+            addButton.setDisable(false);
         });
 
-        // "Add Employee" clicked: a branch must be selectable (guards against the edge
-        // case where the branch list hasn't loaded yet), then send the full form as a
-        // single request. Field-level validation (duplicate employee number, etc.) is
-        // left to the server; the response comes back above.
+        // "Add Employee" clicked. First check that a branch is selected — this guards
+        // against the edge case where the branch list has not loaded yet. Then send
+        // the full form as one request. Field-level checks, like a duplicate employee
+        // number, are left to the server. Its response comes back above.
         addButton.setOnAction(e -> {
             BranchDto branch = branchChoice.getValue();
             if (branch == null) {
                 UiUtil.setStatus(statusLabel, false, "No branch available to assign.");
                 return;
             }
+            // Disable the button until EMPLOYEE_ADD_RESPONSE comes back, so a fast double-click
+            // can't send this same new employee twice before the first attempt is answered.
+            addButton.setDisable(true);
             connection.send(MessageType.EMPLOYEE_ADD_REQUEST, new EmployeeAddRequest(
                     numberField.getText().trim(), nameField.getText().trim(), personalIdField.getText().trim(),
                     phoneField.getText().trim(), accountField.getText().trim(), branch.getId(),

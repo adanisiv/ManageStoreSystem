@@ -17,11 +17,11 @@ public class VIPCustomer extends Customer {
 
     @Override
     public double applyDiscount(double amount) {
-        // First take 15% off the list price, then subtract a flat $10 perk credit
-        // on top of that percentage discount.
+        // First take 15% off the list price. Then subtract a flat $10 perk
+        // credit on top of that.
         double discounted = amount * (1 - VIP_DISCOUNT_RATE) - PERK_CREDIT;
-        // The perk credit could push a small purchase below $0, so floor the
-        // final charge at 0 — a customer is never charged a negative amount.
+        // For a small purchase, the perk credit could push the price below $0.
+        // We floor it at 0 so a customer is never charged a negative amount.
         return Math.max(discounted, 0);
     }
 }

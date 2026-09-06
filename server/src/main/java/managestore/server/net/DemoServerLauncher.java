@@ -33,14 +33,17 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Convenience entry point for trying the whole app out: unlike
- * {@link ServerMain} (which starts with a completely empty network — no
- * branches, no products, no accounts — by design, so the "admin creates
- * every account" flow is exercised for real), this seeds two branches, a
- * product catalog with starting stock, demo customers, a few days of sales
- * history, and a handful of demo accounts, then starts the exact same
- * server loop. {@link ServerMain} + {@link BootstrapAdmin} is still the
- * real entry point for a clean deployment.
+ * A convenience entry point for trying out the whole app quickly.
+ *
+ * <p>{@link ServerMain} always starts with a completely empty network: no
+ * branches, no products, no accounts. That is by design, so the real
+ * "admin creates every account" flow actually gets exercised. This class
+ * skips that setup step instead: it seeds two branches, a product catalog
+ * with starting stock, demo customers, a few days of sales history, and a
+ * handful of demo accounts, then starts the exact same server loop.
+ *
+ * <p>{@link ServerMain} together with {@link BootstrapAdmin} is still the
+ * real entry point to use for a clean deployment.
  */
 public final class DemoServerLauncher {
 
@@ -175,12 +178,13 @@ public final class DemoServerLauncher {
     }
 
     /**
-     * Backdated sales across the last few days so Reports has real numbers to
-     * show immediately (including something to demonstrate the daily-report
-     * filter with) instead of an empty table until someone manually sells
-     * something first. Guarded by whether the repository is already
-     * non-empty so re-running this against a live server mid-demo doesn't
-     * double the numbers.
+     * Creates backdated sales across the last few days, so the Reports screen has real numbers
+     * to show right away, instead of an empty table until someone manually makes a sale. Having
+     * sales on more than one day also gives us something to demonstrate the daily-report filter
+     * with.
+     *
+     * <p>This only runs if the sales repository is still empty, so re-running it against a live
+     * server mid-demo won't double the numbers.
      */
     private static void seedSalesHistoryIfMissing(ServerContext context, StoreChain storeChain) {
         // Only seed once: if the sales repository already has records (a previous demo run,

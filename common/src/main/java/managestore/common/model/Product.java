@@ -3,8 +3,10 @@ package managestore.common.model;
 import java.util.Objects;
 
 /**
- * A sellable product. Identity is by SKU, not object reference, so the same
- * product can be looked up consistently across branches / after deserialization.
+ * A sellable product. Two Product objects are the same product if they have
+ * the same SKU, not if they are the same object in memory. This way the
+ * same product is still recognized across branches, and after it is
+ * deserialized.
  */
 public class Product {
 

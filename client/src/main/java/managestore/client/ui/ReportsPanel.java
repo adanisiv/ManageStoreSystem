@@ -28,11 +28,13 @@ import java.nio.file.Files;
 import java.util.Base64;
 
 /**
- * Sales reports by branch/product/category (or one grand total), optionally
- * narrowed to one calendar day. The response is JSON either way; WORD format
- * additionally comes back with the actual .docx bytes (Base64-encoded over
- * the same JSON protocol) so "Save as Word" just decodes and writes them to
- * disk.
+ * Sales reports, grouped by branch, product, or category — or one grand total
+ * across everything. Can optionally be narrowed down to a single calendar day.
+ *
+ * The response from the server is always JSON. When the requested format is
+ * WORD, the same JSON response also carries the actual .docx file, encoded as
+ * Base64 text so it can travel over the same JSON protocol. "Save as Word"
+ * just decodes that text back into bytes and writes them to disk.
  */
 public class ReportsPanel {
 
@@ -48,8 +50,9 @@ public class ReportsPanel {
         scopeChoice.getSelectionModel().select(ReportScope.BRANCH);
         TextField filterField = new TextField();
         filterField.setPromptText(filterHintFor(ReportScope.BRANCH));
-        // Update the filter field's placeholder text whenever the scope changes, so it
-        // always shows an example relevant to what's currently selected (branch ID vs. SKU, etc.).
+        // Update the filter field's placeholder text whenever the scope changes,
+        // so it always shows an example that matches what's selected, such as a
+        // branch ID or a SKU.
         scopeChoice.valueProperty().addListener((obs, oldScope, newScope) -> filterField.setPromptText(filterHintFor(newScope)));
         DatePicker dayPicker = new DatePicker();
         dayPicker.setPromptText("Day (optional)");
@@ -68,18 +71,20 @@ public class ReportsPanel {
         table.getColumns().add(column("Label", "label"));
         table.getColumns().add(column("Quantity Sold", "quantitySold"));
         table.getColumns().add(revenueColumn());
-        // An empty result (no sales matched the filter) otherwise just looks like a blank,
-        // possibly-broken table with no indication anything happened.
+        // Without this message, an empty result (no sales matched the filter) would
+        // just look like a blank table, with no indication of whether anything happened
+        // or the app was broken.
         table.setPlaceholder(new Label("No sales match this filter."));
 
         HBox controls = new HBox(8, scopeChoice, filterField, dayPicker, formatChoice, generateButton, saveWordButton);
         controls.getStyleClass().add("toolbar");
         controls.setPadding(new Insets(8));
 
-        // "Generate" clicked: any previously fetched Word file is no longer relevant to a
-        // new report, so clear it and disable Save until the new response arrives. An empty
-        // filter field is sent as null so "no filter" reaches the server unambiguously,
-        // rather than as an empty string that a scope-specific match might treat differently.
+        // "Generate" clicked. Any Word file we fetched earlier no longer matches the
+        // new report, so we clear it and disable Save until a new response arrives.
+        // We also send an empty filter field as null, not as an empty string. That
+        // way "no filter" reaches the server clearly, instead of an empty string
+        // that a scope-specific match might treat differently.
         generateButton.setOnAction(e -> {
             saveWordButton.setDisable(true);
             pendingWordFile = null;
@@ -89,9 +94,10 @@ public class ReportsPanel {
                     new ReportRequest(scopeChoice.getValue(), filterValue, formatChoice.getValue(), day));
         });
 
-        // "Save as Word..." clicked: only usable once a WORD-format report response has
-        // actually arrived and decoded the file bytes (see pendingWordFile below). Opens the
-        // native save dialog and writes the already-decoded bytes straight to the chosen path.
+        // "Save as Word..." clicked. This only works once a WORD-format report
+        // response has arrived and its file bytes have been decoded — see
+        // pendingWordFile below. It opens the native save dialog, then writes the
+        // already-decoded bytes straight to the chosen path.
         saveWordButton.setOnAction(e -> {
             if (pendingWordFile == null) {
                 return;
@@ -109,11 +115,11 @@ public class ReportsPanel {
             }
         });
 
-        // Reply to our own REPORT_REQUEST: populate the title, table rows and totals from
-        // the JSON part of the response every time. If the request was for WORD format, the
-        // response additionally carries the .docx file Base64-encoded — decode it once here
-        // and keep the raw bytes around so "Save as Word" can write them out without
-        // re-contacting the server.
+        // This is the reply to our own REPORT_REQUEST. Every time, it fills in the
+        // title, table rows, and totals from the JSON part of the response.
+        // If the request asked for WORD format, the response also carries the .docx
+        // file as Base64 text. We decode it once here and keep the raw bytes around,
+        // so "Save as Word" can write them out later without asking the server again.
         connection.on(MessageType.REPORT_RESPONSE, message -> {
             ReportResponse response = message.readPayload(connection.getGson(), ReportResponse.class);
             titleLabel.setText(response.getTitle());
@@ -136,7 +142,7 @@ public class ReportsPanel {
         return pane;
     }
 
-    /** What the free-text filter field actually expects, which otherwise isn't obvious from "Filter value". */
+    /** Explains what the free-text filter field expects. This isn't obvious from a label like "Filter value" alone. */
     private String filterHintFor(ReportScope scope) {
         switch (scope) {
             case BRANCH:
@@ -151,7 +157,11 @@ public class ReportsPanel {
         }
     }
 
-    /** Revenue is a plain double; PropertyValueFactory would render it via Double.toString (e.g. "245.0"). */
+    /**
+     * Revenue is stored as a plain double. Left to the default PropertyValueFactory,
+     * it would show up formatted like Double.toString does, for example "245.0".
+     * We format it ourselves instead, so it reads like a normal price.
+     */
     private TableColumn<ReportLineDto, ?> revenueColumn() {
         TableColumn<ReportLineDto, String> col = new TableColumn<>("Revenue");
         col.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(

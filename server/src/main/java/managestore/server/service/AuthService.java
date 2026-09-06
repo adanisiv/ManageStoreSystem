@@ -13,10 +13,11 @@ import java.util.Optional;
 
 /**
  * Validates credentials and creates new accounts under the
- * {@link PasswordPolicy}. Deliberately does NOT touch {@link SessionManager}
- * — a successful password check and "is this username allowed to log in
- * right now" (duplicate-login check) are two separate concerns, kept in two
- * separate classes so each is easy to explain/test on its own.
+ * {@link PasswordPolicy}. This class deliberately does NOT touch
+ * {@link SessionManager}. Checking a password is one concern. Checking
+ * whether that username is already logged in somewhere else is a separate
+ * concern. Keeping them in two separate classes makes each one easier to
+ * explain and test on its own.
  */
 public class AuthService {
 
@@ -77,10 +78,12 @@ public class AuthService {
     }
 
     /**
-     * Symmetric counterpart to {@link #createAccount}: removes both the employee profile and its
-     * login credentials together, so a deleted employee's username is fully freed (not just
-     * orphaned) and {@link #login} — which already refuses any account whose employee record is
-     * missing — has nothing left to even find. No-op if the employee number doesn't exist.
+     * The counterpart to {@link #createAccount}: it undoes both halves that method set up.
+     * It removes the employee profile and its login credentials together. This fully frees
+     * up the username, instead of just leaving it orphaned with no employee behind it.
+     * Afterward there is nothing left for {@link #login} to find — it already refuses any
+     * account whose employee record is missing. Does nothing if the employee number doesn't
+     * exist.
      */
     public void deleteAccount(String employeeNumber) {
         // Remove both halves together so no orphaned employee-without-account or

@@ -1,15 +1,18 @@
 package managestore.common.protocol;
 
 /**
- * {@code filterValue} narrows the scope to one specific branch id / product
- * sku / category name; null means "all of them, grouped by {@code scope}".
+ * {@code filterValue} narrows the report down to one branch id, one product
+ * sku, or one category name. If it is null, the report covers all of them,
+ * grouped by {@code scope}.
  *
- * <p>{@code day} additionally narrows to sales made on one calendar day
- * (ISO-8601 {@code yyyy-MM-dd}, e.g. {@code "2026-08-17"}), compared against
- * each sale's timestamp in UTC; null means "no day restriction, every sale
- * on record". Kept as a plain string
- * (rather than {@code java.time.LocalDate}) so the wire format stays a
- * simple JSON string with no date-specific Gson adapter required.
+ * <p>{@code day} narrows the report further, down to sales made on one
+ * calendar day. It uses the ISO-8601 format {@code yyyy-MM-dd} (for example
+ * {@code "2026-08-17"}), compared against each sale's timestamp in UTC. If
+ * it is null, there is no day restriction, so every sale on record counts.
+ *
+ * <p>{@code day} is kept as a plain string, not a {@code java.time.LocalDate}.
+ * This keeps the wire format a simple JSON string, with no need for a
+ * date-specific Gson adapter.
  */
 public class ReportRequest {
 

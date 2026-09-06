@@ -34,6 +34,14 @@ public final class PasswordHasher {
     }
 
     public static String hash(String password, String salt) {
+        // A missing salt means the account record is corrupted — for example a hand-edited
+        // accounts.json, or a partial write recovered from an older file format. Without this
+        // check, Base64 decoding a null salt throws a bare NullPointerException, which reaches
+        // the client as the unhelpful "Request failed: null" with no hint of what's actually
+        // wrong, for every future login attempt on that one account.
+        if (salt == null) {
+            throw new IllegalStateException("Account has no password salt on record — the stored account data is corrupted");
+        }
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] saltBytes = Base64.getDecoder().decode(salt);
@@ -58,6 +66,15 @@ public final class PasswordHasher {
         // Re-derive the hash from the candidate password using the account's stored salt, then
         // compare it to the stored hash — there is no way to "decrypt" the stored hash back to
         // a password, only to recompute and compare.
-        return hash(password, salt).equals(expectedHash);
+        String actualHash = hash(password, salt);
+        // Comparing with String.equals stops at the first character that differs, so a wrong
+        // guess that happens to share more of its prefix with the real hash takes a few
+        // nanoseconds longer to reject than one that doesn't. That tiny timing difference is a
+        // real, if hard to exploit, side channel over a network. MessageDigest.isEqual always
+        // compares every byte no matter where the first mismatch is, so it takes the same amount
+        // of time whether the guess is close or completely wrong.
+        return MessageDigest.isEqual(
+                actualHash.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                expectedHash.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

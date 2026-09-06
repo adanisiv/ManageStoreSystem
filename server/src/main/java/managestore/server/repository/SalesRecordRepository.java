@@ -7,15 +7,19 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * In-memory only, deliberately: {@link SalesRecord} holds a {@link
- * managestore.common.model.Customer}, and Customer is a polymorphic type
- * (NewCustomer/ReturningCustomer/VIPCustomer). Gson can serialize a concrete
- * instance fine but can't reliably deserialize back into "the right
- * subclass" from JSON alone (see {@link managestore.common.protocol.CustomerDto}'s
- * javadoc for the same issue) — so unlike the other repositories, this one
- * isn't backed by a JSON file. Sales history resets on server restart, which
- * this project accepts rather than adding subclass-aware (de)serialization
- * for data that doesn't need to survive one.
+ * This repository only keeps data in memory, on purpose. Here is why.
+ *
+ * <p>A {@link SalesRecord} holds a {@link managestore.common.model.Customer},
+ * and Customer actually has several different subclasses (NewCustomer,
+ * ReturningCustomer, VIPCustomer). Gson can turn one of these objects into
+ * JSON without trouble. But when reading that JSON back, Gson cannot reliably
+ * tell which subclass to rebuild it as (see {@link managestore.common.protocol.CustomerDto}'s
+ * javadoc — it hits the same problem). So, unlike the other repositories,
+ * this one is not backed by a JSON file.
+ *
+ * <p>The result: sales history is lost when the server restarts. We accept
+ * that trade-off here, instead of writing extra code to save and load each
+ * customer subclass correctly for data that does not need to survive a restart.
  */
 public class SalesRecordRepository {
 
@@ -25,8 +29,10 @@ public class SalesRecordRepository {
         records.add(record);
     }
 
-    // Returns a copy, not the live list, so callers can freely read/iterate
-    // it without seeing later additions or being able to mutate internal state.
+    // Returns a copy of the list, not the original. This way the caller can
+    // freely read through it without two things happening: later additions
+    // showing up in their copy, or the caller accidentally changing our
+    // internal data.
     public List<SalesRecord> all() {
         return new ArrayList<>(records);
     }

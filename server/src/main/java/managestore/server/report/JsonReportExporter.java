@@ -15,15 +15,16 @@ public class JsonReportExporter implements ReportExporter {
 
     @Override
     public byte[] export(String title, List<ReportLineDto> lines, int totalQuantity, double totalRevenue) {
-        // LinkedHashMap (rather than HashMap) keeps insertion order, so the
-        // fields below always appear in this same order in the output JSON.
+        // We use LinkedHashMap instead of HashMap because it remembers the
+        // order fields were added. That way the fields below always appear
+        // in this same order in the output JSON.
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("title", title);
         json.put("lines", lines);
         json.put("totalQuantity", totalQuantity);
         json.put("totalRevenue", totalRevenue);
-        // Serialize the whole map to a pretty-printed JSON string, then to
-        // raw bytes — this is what actually gets written to the report file.
+        // Turn the whole map into a pretty-printed JSON string, then into raw
+        // bytes. These bytes are what actually get written to the report file.
         return gson.toJson(json).getBytes(StandardCharsets.UTF_8);
     }
 }

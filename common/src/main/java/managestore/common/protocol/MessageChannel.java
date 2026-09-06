@@ -12,14 +12,16 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Wraps a {@link Socket} to send/receive one {@link Message} per line of
- * JSON. Used identically by the server's ClientHandler and the client's
- * ServerConnection, so the wire format only needs to be implemented once.
+ * Wraps a {@link Socket} to send and receive one {@link Message} per line
+ * of JSON. Both the server's ClientHandler and the client's
+ * ServerConnection use this same class the same way, so the wire format
+ * only has to be implemented once.
  *
- * <p>{@link #send} is synchronized because, once a client is logged in, both
- * the connection's own handler thread and the server's broadcast/notification
- * threads (inventory updates, chat notices) may write to the same socket
- * concurrently.
+ * <p>{@link #send} is synchronized because more than one thread can write
+ * to the same socket at once, once a client is logged in. The connection's
+ * own handler thread can write, and so can the server's broadcast and
+ * notification threads (for things like inventory updates and chat
+ * notices).
  */
 public class MessageChannel implements AutoCloseable {
 

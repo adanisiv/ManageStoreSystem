@@ -25,12 +25,21 @@ class PersonalIdValidatorTest {
 
     @Test
     void zeroPadsShorterIdsBeforeChecking() {
-        // "1234782" checksum-padded to "001234782" is a real, valid Israeli ID shape.
-        String reason = PersonalIdValidator.validate("1234782");
-        // Whether this specific short id happens to be valid or not isn't the point (see the two
-        // tests above for that) — the point is it's evaluated as a 9-digit number, not rejected
-        // outright just for being short.
-        assertTrue(reason == null || reason.contains("checksum"), "should be judged by checksum, not by length: " + reason);
+        // "1234780" is 7 digits; padded to "001234780" its weighted sum is 30, a multiple of 10,
+        // so it must be accepted. The two leading zeros contribute nothing themselves, but they
+        // shift every real digit into a different weighting position — which is exactly why the
+        // padding has to happen before the checksum runs, not after.
+        assertNull(PersonalIdValidator.validate("1234780"));
+        assertTrue(PersonalIdValidator.isValid("1234780"));
+    }
+
+    @Test
+    void aShortIdWithABadChecksumIsStillRejected() {
+        // Same 7-digit id as above with the last digit changed: padded sum is 31, so it fails.
+        // Together with the test above this pins down that a short id is *evaluated*, not
+        // waved through for being short and not rejected for it either.
+        assertNotNull(PersonalIdValidator.validate("1234781"));
+        assertFalse(PersonalIdValidator.isValid("1234781"));
     }
 
     @Test

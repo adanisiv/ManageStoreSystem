@@ -14,7 +14,9 @@ import managestore.common.model.Role;
  * The main app window after login: one tabbed window holding every screen
  * rather than several separate ones. Which employee is logged in (and their
  * role) is shown in the header and gates which tabs are visible — an admin
- * sees the Employees and System Log tabs that other roles don't.
+ * sees the System Log tab that other roles don't, but loses the Inventory
+ * tab that every branch-assigned employee gets, since ADMIN is the one role
+ * with no branch of its own to show stock for.
  */
 public class MainWindow {
 
@@ -33,7 +35,13 @@ public class MainWindow {
         header.setMaxWidth(Double.MAX_VALUE);
 
         TabPane tabs = new TabPane();
-        tabs.getTabs().add(tab("📦 Inventory", new InventoryPanel(connection).build()));
+        // Inventory is always scoped to one branch (see ClientHandler.requireLoginAndBranch),
+        // and an employee with no branchId — currently only ADMIN — has no branch inventory to
+        // show. Without this check, that employee's Inventory tab would immediately fail its
+        // startup snapshot request and surface a "not assigned to a branch" error dialog on login.
+        if (employee.getBranchId() != null) {
+            tabs.getTabs().add(tab("📦 Inventory", new InventoryPanel(connection).build()));
+        }
         tabs.getTabs().add(tab("👥 Customers", new CustomersPanel(connection).build()));
         tabs.getTabs().add(tab("📊 Reports", new ReportsPanel(connection).build()));
         tabs.getTabs().add(tab("💬 Chat", new ChatPanel(connection, employee).build()));

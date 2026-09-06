@@ -19,7 +19,10 @@ public final class PhoneValidator {
         if (phone == null || phone.trim().isEmpty()) {
             return "Phone number is required";
         }
+        // Strip any spaces or dashes the user typed as separators, leaving just the digits.
         String digitsOnly = phone.replaceAll("[\\s-]", "");
+        // Must start with 0, followed by 8-9 more digits (9 or 10 digits total) — covers both
+        // 9-digit landline numbers and 10-digit mobile numbers.
         if (!digitsOnly.matches("0\\d{8,9}")) {
             return "Phone number must start with 0 and have 9-10 digits total, e.g. 050-1234567";
         }

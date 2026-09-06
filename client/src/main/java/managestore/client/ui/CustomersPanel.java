@@ -53,6 +53,9 @@ public class CustomersPanel {
         Label statusLabel = new Label();
         statusLabel.getStyleClass().add("status-label");
 
+        // "Add Customer" clicked: require a personal ID and a name before bothering the
+        // server; phone is optional. On success the fields get cleared by the
+        // CUSTOMER_ADD_RESPONSE handler below, not here — this only fires off the request.
         addButton.setOnAction(e -> {
             String id = idField.getText().trim();
             if (id.isEmpty() || nameField.getText().trim().isEmpty()) {
@@ -67,6 +70,8 @@ public class CustomersPanel {
         addBar.getStyleClass().add("toolbar");
         addBar.setPadding(new Insets(8));
 
+        // Initial full load of the customer directory (requested once below): rebuild the
+        // map from scratch and push everything into the table.
         connection.on(MessageType.CUSTOMER_LIST_RESPONSE, message -> {
             CustomerListResponse response = message.readPayload(connection.getGson(), CustomerListResponse.class);
             byPersonalId.clear();
@@ -92,11 +97,13 @@ public class CustomersPanel {
         connection.on(MessageType.CUSTOMER_ADD_RESPONSE, message -> {
             CustomerAddResponse response = message.readPayload(connection.getGson(), CustomerAddResponse.class);
             if (response.isSuccess()) {
+                // Clear the form so it's ready for the next entry.
                 UiUtil.setStatus(statusLabel, true, "Added " + nameField.getText().trim() + ".");
                 idField.clear();
                 nameField.clear();
                 phoneField.clear();
             } else {
+                // Leave whatever the user typed in place so they can fix it and retry.
                 UiUtil.setStatus(statusLabel, false, "Failed: " + response.getErrorMessage());
             }
         });

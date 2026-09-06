@@ -11,5 +11,7 @@ import java.util.List;
  */
 public interface ReportExporter {
 
+    // Renders one report (title + line items + precomputed totals) into the
+    // raw bytes of a file in this exporter's format (e.g. JSON or .docx).
     byte[] export(String title, List<ReportLineDto> lines, int totalQuantity, double totalRevenue);
 }

@@ -15,6 +15,8 @@ import managestore.common.model.PurchaseResult;
 public class PurchaseService {
 
     public PurchaseResult purchase(Branch branch, Product product, int quantity, Customer customer) {
+        // Delegate straight to the customer: stock validation, discount calculation and
+        // decrementing inventory all happen inside Customer#purchase, not here.
         return customer.purchase(product, quantity, branch.getInventory());
     }
 
@@ -24,7 +26,9 @@ public class PurchaseService {
      * (a customer buying from stock).
      */
     public int restock(Branch branch, Product product, int quantity) {
+        // Increase the branch's stock for this product...
         branch.getInventory().addStock(product, quantity);
+        // ...then read back the new total so the caller can confirm/display it.
         return branch.getInventory().getQuantity(product);
     }
 }

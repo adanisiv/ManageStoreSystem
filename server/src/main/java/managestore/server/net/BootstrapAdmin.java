@@ -26,16 +26,22 @@ public final class BootstrapAdmin {
     }
 
     public static void main(String[] args) {
+        // Command-line args are all optional; fall back to sensible defaults for a quick local setup.
         String username = args.length > 0 ? args[0] : "admin";
         String password = args.length > 1 ? args[1] : "admin123";
         String fullName = args.length > 2 ? args[2] : "System Administrator";
 
+        // Point at the same data/ files ServerMain uses, so the account this creates is visible
+        // to the server the next time it starts.
         Path dataDir = Paths.get("data");
         EmployeeRepository employeeRepository = new JsonFileEmployeeRepository(dataDir.resolve("employees.json"));
         AccountRepository accountRepository = new JsonFileAccountRepository(dataDir.resolve("accounts.json"));
         AuthService authService = new AuthService(accountRepository, employeeRepository);
 
+        // No branch assignment (null) — an admin isn't tied to a single store branch.
         Employee admin = new Employee("ADMIN-1", fullName, "000000000", "", "", null, Role.ADMIN);
+        // Writes both the Employee record and its login Account, the same pairing
+        // EMPLOYEE_ADD_REQUEST creates for every later employee.
         authService.createAccount(admin, username, password);
 
         System.out.println("Created admin account. Username: " + username + "  Password: " + password);

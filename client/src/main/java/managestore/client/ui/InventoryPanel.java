@@ -79,6 +79,9 @@ public class InventoryPanel {
             }
         });
 
+        // productChoice/customerChoice share the very same observable lists that back the
+        // inventory table and customer directory, so both dropdowns update automatically
+        // whenever a snapshot or push updates rows/customerRows below.
         ChoiceBox<StockEntry> productChoice = new ChoiceBox<>(rows);
         productChoice.setPrefWidth(240);
         ChoiceBox<CustomerDto> customerChoice = new ChoiceBox<>(customerRows);
@@ -88,6 +91,9 @@ public class InventoryPanel {
         Button restockButton = new Button("📦 Restock (purchase)");
         Label statusLabel = new Label();
 
+        // "Sell" clicked: validate a product and customer are both selected, then ask
+        // the server to process the sale. The result (success/failure) arrives later
+        // via PURCHASE_RESPONSE below — nothing here updates the UI directly.
         sellButton.setOnAction(e -> {
             StockEntry product = productChoice.getValue();
             CustomerDto customer = customerChoice.getValue();
@@ -99,6 +105,8 @@ public class InventoryPanel {
                     new PurchaseRequest(product.getSku(), quantitySpinner.getValue(), customer.getPersonalId()));
         });
 
+        // "Restock" clicked: validate a product is selected, then ask the server to
+        // add the chosen quantity back into stock. Result comes back via RESTOCK_RESPONSE.
         restockButton.setOnAction(e -> {
             StockEntry product = productChoice.getValue();
             if (product == null) {
@@ -117,6 +125,9 @@ public class InventoryPanel {
         sellBar.setPadding(new Insets(8));
         statusLabel.getStyleClass().add("status-label");
 
+        // First full load of inventory, requested once below. Rebuilds the bySku map from
+        // scratch (this is the only listener that clears it) and pushes the result into
+        // the table/dropdown via the shared refresh helper.
         connection.on(MessageType.INVENTORY_SNAPSHOT_RESPONSE, message -> {
             InventorySnapshotResponse response = message.readPayload(connection.getGson(), InventorySnapshotResponse.class);
             bySku.clear();
@@ -126,12 +137,16 @@ public class InventoryPanel {
             refreshRowsKeepingSelection(rows, bySku.values(), productChoice, StockEntry::getSku);
         });
 
+        // A live push telling us one product's stock changed — could be from our own
+        // sale/restock, or from another employee's, anywhere in the branch. Only that
+        // one SKU is updated in the map (not a full reload), then the table/dropdown refresh.
         connection.on(MessageType.INVENTORY_UPDATE, message -> {
             InventoryUpdateNotice notice = message.readPayload(connection.getGson(), InventoryUpdateNotice.class);
             bySku.put(notice.getEntry().getSku(), notice.getEntry());
             refreshRowsKeepingSelection(rows, bySku.values(), productChoice, StockEntry::getSku);
         });
 
+        // First full load of the customer directory, requested once below.
         connection.on(MessageType.CUSTOMER_LIST_RESPONSE, message -> {
             CustomerListResponse response = message.readPayload(connection.getGson(), CustomerListResponse.class);
             customersById.clear();
@@ -141,12 +156,18 @@ public class InventoryPanel {
             refreshRowsKeepingSelection(customerRows, customersById.values(), customerChoice, CustomerDto::getPersonalId);
         });
 
+        // A live push when a customer's data changes elsewhere (e.g. another screen
+        // edited them) — same "update one entry, then refresh" approach as inventory.
         connection.on(MessageType.CUSTOMER_UPDATE_BROADCAST, message -> {
             CustomerUpdateNotice notice = message.readPayload(connection.getGson(), CustomerUpdateNotice.class);
             customersById.put(notice.getCustomer().getPersonalId(), notice.getCustomer());
             refreshRowsKeepingSelection(customerRows, customersById.values(), customerChoice, CustomerDto::getPersonalId);
         });
 
+        // Reply to our own PURCHASE_REQUEST (sent from the "Sell" button above): report
+        // success with the amount actually charged, or the server's reason for rejecting it
+        // (e.g. insufficient stock). Note the inventory table itself is updated separately,
+        // by the INVENTORY_UPDATE push the sale triggers on the server side — not from here.
         connection.on(MessageType.PURCHASE_RESPONSE, message -> {
             PurchaseResponse response = message.readPayload(connection.getGson(), PurchaseResponse.class);
             UiUtil.setStatus(statusLabel, response.isSuccess(), response.isSuccess()
@@ -154,6 +175,7 @@ public class InventoryPanel {
                     : "Sale failed: " + response.getErrorMessage());
         });
 
+        // Reply to our own RESTOCK_REQUEST (sent from the "Restock" button above).
         connection.on(MessageType.RESTOCK_RESPONSE, message -> {
             RestockResponse response = message.readPayload(connection.getGson(), RestockResponse.class);
             UiUtil.setStatus(statusLabel, response.isSuccess(), response.isSuccess()
@@ -161,6 +183,8 @@ public class InventoryPanel {
                     : "Restock failed: " + response.getErrorMessage());
         });
 
+        // Kick off the initial loads as soon as the panel is built; the responses are
+        // handled by the listeners registered just above.
         connection.send(MessageType.INVENTORY_SNAPSHOT_REQUEST, new Object());
         connection.send(MessageType.CUSTOMER_LIST_REQUEST, new Object());
 
@@ -181,10 +205,14 @@ public class InventoryPanel {
      */
     private <T> void refreshRowsKeepingSelection(ObservableList<T> rows, Collection<T> newValues,
                                                   ChoiceBox<T> choice, Function<T, String> keyOf) {
+        // Remember what's currently selected, by its stable key, before wiping the list.
         T selected = choice.getValue();
         String selectedKey = selected != null ? keyOf.apply(selected) : null;
+        // Wholesale replace of the backing list with the fresh data.
         rows.setAll(newValues);
         if (selectedKey != null) {
+            // Find the new object that has the same key as what was selected before,
+            // and re-select it so the user's choice survives the refresh.
             for (T candidate : rows) {
                 if (selectedKey.equals(keyOf.apply(candidate))) {
                     choice.getSelectionModel().select(candidate);

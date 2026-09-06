@@ -48,6 +48,8 @@ public final class DemoServerLauncher {
     }
 
     public static void main(String[] args) throws IOException {
+        // Same port/data-dir setup as ServerMain — the demo launcher reuses the real bootstrap
+        // plumbing, it just seeds data into it before serving.
         int port = args.length > 0 ? Integer.parseInt(args[0]) : NetworkDefaults.DEFAULT_PORT;
         Path dataDir = Paths.get("data");
 
@@ -55,13 +57,19 @@ public final class DemoServerLauncher {
         AccountRepository accountRepository = new JsonFileAccountRepository(dataDir.resolve("accounts.json"));
         AuthService authService = new AuthService(accountRepository, employeeRepository);
 
+        // Build the branches/products/stock in memory, then create demo employee accounts and
+        // customers against them — order matters here since accounts/customers reference branches.
         StoreChain storeChain = seedStoreChain();
         seedAccountsIfMissing(authService, accountRepository, storeChain);
         seedCustomersIfMissing(storeChain);
 
+        // Sales history seeding needs a ServerContext (it reads/writes through the sales record
+        // repository the context owns), so the context is built before that last seeding step.
         ServerContext context = new ServerContext(storeChain, authService, employeeRepository, new Gson());
         seedSalesHistoryIfMissing(context, storeChain);
 
+        // From here on this is identical to ServerMain: bind the socket, accept connections on
+        // a pooled thread per client, until the socket is closed.
         try (ServerSocket serverSocket = ServerMain.bind(port)) {
             ExecutorService clientPool = Executors.newCachedThreadPool();
             try {
@@ -75,11 +83,13 @@ public final class DemoServerLauncher {
     private static StoreChain seedStoreChain() {
         StoreChain storeChain = new StoreChain();
 
+        // Two branches to demonstrate that inventory/stock is tracked per branch, not globally.
         Branch downtown = new Branch("B1", "Downtown Branch");
         Branch uptown = new Branch("B2", "Uptown Branch");
         storeChain.addBranch(downtown);
         storeChain.addBranch(uptown);
 
+        // The product catalog itself is chain-wide (not per branch) — only the stock quantities below are per branch.
         Product tshirt = new Product("SKU-TSHIRT", "Basic T-Shirt", "Tops", 49.90);
         Product jeans = new Product("SKU-JEANS", "Slim Jeans", "Bottoms", 149.90);
         Product jacket = new Product("SKU-JACKET", "Winter Jacket", "Outerwear", 349.90);
@@ -90,6 +100,8 @@ public final class DemoServerLauncher {
             storeChain.addProduct(product);
         }
 
+        // Give each branch its own starting stock levels; uptown deliberately doesn't carry
+        // every product (no jacket or hat there) to show inventory can differ between branches.
         downtown.getInventory().addStock(tshirt, 40);
         downtown.getInventory().addStock(jeans, 20);
         downtown.getInventory().addStock(jacket, 8);
@@ -124,12 +136,16 @@ public final class DemoServerLauncher {
 
     private static void createIfMissing(AuthService authService, AccountRepository accountRepository, StoreChain storeChain,
                                          String username, String password, Employee employee) {
+        // Skip account creation entirely if this username already exists — makes re-running the
+        // demo launcher against existing data/*.json files a no-op instead of an error or duplicate.
         if (accountRepository.findByUsername(username).isPresent()) {
             return;
         }
+        // Creates both the Employee record and its login Account together.
         authService.createAccount(employee, username, password);
         LogManager.getInstance().log(new LogEvent(LogType.EMPLOYEE_REGISTERED, "system-seed",
                 "Registered employee " + employee.getEmployeeNumber() + " (" + employee.getFullName() + ", " + employee.getRole() + ")"));
+        // Also attach the employee to their branch's roster, if they have one (admins don't).
         if (employee.getBranchId() != null) {
             Branch branch = storeChain.getBranch(employee.getBranchId());
             if (branch != null) {
@@ -147,6 +163,8 @@ public final class DemoServerLauncher {
     }
 
     private static void addCustomerIfMissing(StoreChain storeChain, Customer customer) {
+        // Personal ID is the directory's key, so a non-null lookup means this customer was
+        // already seeded (or added independently) on a previous run.
         if (storeChain.getCustomerDirectory().get(customer.getPersonalId()) != null) {
             return;
         }
@@ -165,6 +183,8 @@ public final class DemoServerLauncher {
      * double the numbers.
      */
     private static void seedSalesHistoryIfMissing(ServerContext context, StoreChain storeChain) {
+        // Only seed once: if the sales repository already has records (a previous demo run,
+        // or real sales made since), skip re-seeding so numbers don't get doubled up.
         if (!context.getSalesRecordRepository().all().isEmpty()) {
             return;
         }
@@ -176,6 +196,8 @@ public final class DemoServerLauncher {
         Product jacket = storeChain.getProduct("SKU-JACKET");
         Product sneakers = storeChain.getProduct("SKU-SNEAKERS");
 
+        // Spread the demo sales across today and the two previous days so the Reports screen's
+        // daily filter has more than one day of data to demonstrate.
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         sell(context, "B1", tshirt, 3, noa, today);
         sell(context, "B1", jeans, 1, tamar, today);
@@ -189,10 +211,14 @@ public final class DemoServerLauncher {
 
     /** Records the sale AND decrements stock, so the Inventory tab's current numbers stay consistent with sales history. */
     private static void sell(ServerContext context, String branchId, Product product, int quantity, Customer customer, LocalDate day) {
+        // No discount logic here (unlike the live PurchaseService) — demo sales are recorded at full list price.
         double amount = product.getPrice() * quantity;
+        // Backdate the timestamp to midday on the given day, rather than "now", so each seeded sale
+        // lands on the intended day for the daily report filter.
         PurchaseResult result = new PurchaseResult(customer, product, quantity, amount, amount);
         Instant timestamp = day.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(12 * 3600);
         context.getSalesRecordRepository().add(new SalesRecord(branchId, result, timestamp));
+        // Keep inventory consistent with the sale: whatever was "sold" here is also removed from stock.
         context.getStoreChain().getBranch(branchId).getInventory().removeStock(product, quantity);
         LogManager.getInstance().log(new LogEvent(LogType.SALE, "system-seed",
                 "Sold " + quantity + "x " + product.getSku() + " to " + customer.getPersonalId() + " for " + amount));

@@ -51,11 +51,16 @@ public class ChatMediator {
     private final Map<String, BlockingQueue<ChatRequest>> pendingByBranch = new LinkedHashMap<>();
 
     public synchronized void register(Employee employee, ChatEndpoint endpoint) {
+        // Record both "who is this employee" and "how do I push a message to them" —
+        // findFreeEmployeeAtBranch needs the former, send(...) needs the latter.
         connected.put(employee.getEmployeeNumber(), employee);
         endpoints.put(employee.getEmployeeNumber(), endpoint);
     }
 
     public synchronized void unregister(String employeeNumber) {
+        // If this employee was mid-chat, end that session first so the other participant(s)
+        // get a proper CHAT_END notice and get freed up, instead of being left hanging with a
+        // "busy" partner who silently vanished.
         endChatIfActive(employeeNumber);
         connected.remove(employeeNumber);
         endpoints.remove(employeeNumber);
@@ -70,6 +75,9 @@ public class ChatMediator {
      * notification for someone who isn't even connected to call back.
      */
     private void removePendingRequestsFrom(String employeeNumber) {
+        // Scrub every branch's queue, not just the target branch's — the employee may have
+        // multiple stale requests queued (e.g. requested, disconnected, reconnected, requested
+        // again) or requests queued under different branch ids from direct-chat fallbacks.
         for (BlockingQueue<ChatRequest> queue : pendingByBranch.values()) {
             queue.removeIf(request -> request.getFromEmployeeNumber().equals(employeeNumber));
         }
@@ -92,17 +100,27 @@ public class ChatMediator {
      *     clicking "Request Chat" twice, not just the shift-manager join case.
      */
     public synchronized boolean requestChat(String fromEmployeeNumber, String targetBranchId) {
+        // Busy-guard described in the javadoc above: reject outright rather than let a second
+        // request silently clobber the requester's existing session mapping.
         if (isBusy(fromEmployeeNumber)) {
             return false;
         }
+        // Look for anyone at the target branch who is connected, not the requester themselves,
+        // and not already busy.
         String freeEmployee = findFreeEmployeeAtBranch(targetBranchId, fromEmployeeNumber);
         if (freeEmployee != null) {
+            // Someone's available right now — connect them immediately.
             startSession(fromEmployeeNumber, freeEmployee);
         } else {
+            // Nobody free at that branch: create the branch's queue on first use, then enqueue
+            // this request so it can be picked up later (see notifyIfQueuedRequestWaiting) when
+            // someone at that branch becomes free.
             pendingByBranch.computeIfAbsent(targetBranchId, id -> new LinkedBlockingQueue<>())
                     .offer(new ChatRequest(fromEmployeeNumber, targetBranchId));
+            // Let the requester know they're waiting rather than leaving them guessing.
             send(fromEmployeeNumber, MessageType.CHAT_QUEUED, new ChatQueuedNotice(targetBranchId));
         }
+        // Either path (matched or queued) counts as "accepted".
         return true;
     }
 
@@ -117,13 +135,22 @@ public class ChatMediator {
      *     False if {@code fromEmployeeNumber} is busy in a genuinely different session.
      */
     public synchronized boolean requestDirectChat(String fromEmployeeNumber, String targetEmployeeNumber) {
+        // If the requester is already in a session, this is only ever acceptable when that
+        // session is the exact one shared with the target (reference equality, not just "some
+        // session") — that's the harmless "call back the person you're already talking to"
+        // no-op described in the javadoc. Any other existing session means "busy elsewhere".
         ChatSession current = sessionByEmployeeNumber.get(fromEmployeeNumber);
         if (current != null) {
             return current == sessionByEmployeeNumber.get(targetEmployeeNumber);
         }
+        // Requester is free. Only start immediately if the target is actually connected and
+        // not busy themselves — otherwise fall through to queueing.
         if (connected.containsKey(targetEmployeeNumber) && !isBusy(targetEmployeeNumber)) {
             startSession(fromEmployeeNumber, targetEmployeeNumber);
         } else {
+            // Target is offline or busy: queue the request under the target's branch (or null
+            // if the target isn't connected at all/has no branch) so it surfaces the next time
+            // someone at that branch frees up, same mechanism as the branch-wide requestChat.
             Employee target = connected.get(targetEmployeeNumber);
             String branchId = target != null ? target.getBranchId() : null;
             pendingByBranch.computeIfAbsent(branchId, id -> new LinkedBlockingQueue<>())
@@ -149,30 +176,45 @@ public class ChatMediator {
      *     instance shared by every participant's map entry, never copied.
      */
     public synchronized boolean joinChat(String shiftManagerEmployeeNumber, String targetEmployeeNumber) {
+        // The target must actually be in an active session for there to be anything to join.
         ChatSession session = sessionByEmployeeNumber.get(targetEmployeeNumber);
         if (session == null) {
             return false;
         }
+        // Reference equality on purpose (see javadoc): this tells "already a participant in
+        // this exact session" apart from "busy in some other session" — isBusy alone can't
+        // make that distinction. Re-joining the same session is a harmless success, not a
+        // rejection.
         if (sessionByEmployeeNumber.get(shiftManagerEmployeeNumber) == session) {
             return true;
         }
+        // Not in this session, so any existing session at all means "busy elsewhere" — refuse
+        // rather than silently stealing the shift manager away from their current chat.
         if (isBusy(shiftManagerEmployeeNumber)) {
             return false;
         }
+        // Clear to join: add as a third (or later) participant, mark them busy, and point their
+        // entry in sessionByEmployeeNumber at this shared session instance.
         session.addParticipant(shiftManagerEmployeeNumber);
         busyEmployeeNumbers.add(shiftManagerEmployeeNumber);
         sessionByEmployeeNumber.put(shiftManagerEmployeeNumber, session);
+        // Re-announce the (now larger) participant list to everyone in the session.
         broadcastSessionStarted(session);
         return true;
     }
 
     public synchronized void sendMessage(String sessionEmployeeNumber, String text) {
+        // Not in any session (e.g. stale client, chat already ended) — nothing to send.
         ChatSession session = sessionByEmployeeNumber.get(sessionEmployeeNumber);
         if (session == null) {
             return;
         }
+        // Record the message in the session's transcript before fanning it out, so it's
+        // captured even if a send below fails or a participant is momentarily unreachable.
         session.appendToTranscript(sessionEmployeeNumber, text);
         ChatMessageDto messageDto = new ChatMessageDto(session.getId(), sessionEmployeeNumber, text);
+        // Broadcast to every other participant (2 in the normal case, 3+ once a shift manager
+        // has joined) — skip the sender so they don't get an echo of their own message.
         for (String participant : session.getParticipantEmployeeNumbers()) {
             if (!participant.equals(sessionEmployeeNumber)) {
                 send(participant, MessageType.CHAT_MESSAGE, messageDto);
@@ -185,28 +227,44 @@ public class ChatMediator {
     }
 
     private void endChatIfActive(String employeeNumber) {
+        // Any participant (2 or 3+) can trigger the end — look up the shared session through
+        // whichever employee number was passed in.
         ChatSession session = sessionByEmployeeNumber.get(employeeNumber);
         if (session == null) {
             return;
         }
+        // Snapshot the participant list before mutating anything: the loop below removes
+        // participants from the live session, so iterating a copy avoids modifying the
+        // collection while walking it.
         List<String> participants = new ArrayList<>(session.getParticipantEmployeeNumbers());
         for (String participant : participants) {
+            // Tear down every participant's state for this session: drop them from the
+            // session itself, clear their session/busy bookkeeping, and tell their client the
+            // chat is over — this ends the chat for ALL participants at once, not just the
+            // one who asked to end it.
             session.removeParticipant(participant);
             sessionByEmployeeNumber.remove(participant);
             busyEmployeeNumbers.remove(participant);
             send(participant, MessageType.CHAT_END, new ChatEndNotice(session.getId()));
         }
+        // Record the whole conversation as a single log entry once the session is fully torn
+        // down, so the log reflects the final, complete transcript.
         LogManager.getInstance().log(new LogEvent(LogType.CHAT, String.join(", ", participants),
                 "Chat session " + session.getId() + " ended. Transcript: " + String.join(" | ", session.getTranscript())));
+        // Now that everyone from this session is free again, give each of them a chance to pick
+        // up the next queued request waiting at their branch (if any).
         for (String freedParticipant : participants) {
             notifyIfQueuedRequestWaiting(freedParticipant);
         }
     }
 
     private void startSession(String employeeA, String employeeB) {
+        // Brand-new session with exactly these two as its initial participants.
         ChatSession session = new ChatSession();
         session.addParticipant(employeeA);
         session.addParticipant(employeeB);
+        // Both sides are now considered busy, and both map to this same session instance so
+        // either one can later look it up, send messages through it, or end it.
         busyEmployeeNumbers.add(employeeA);
         busyEmployeeNumbers.add(employeeB);
         sessionByEmployeeNumber.put(employeeA, session);
@@ -215,46 +273,66 @@ public class ChatMediator {
     }
 
     private void broadcastSessionStarted(ChatSession session) {
+        // Snapshot the current participant list into the notice so later changes to the
+        // session (e.g. a shift manager joining) don't retroactively alter a notice already
+        // queued for delivery.
         ChatStartedNotice notice = new ChatStartedNotice(session.getId(), new ArrayList<>(session.getParticipantEmployeeNumbers()));
+        // Tell every current participant (including the one who just joined) who's in the chat now.
         for (String participant : session.getParticipantEmployeeNumbers()) {
             send(participant, MessageType.CHAT_STARTED, notice);
         }
     }
 
     private void notifyIfQueuedRequestWaiting(String freedEmployeeNumber) {
+        // Can't route a notification to someone with no known branch (e.g. an ADMIN account,
+        // or someone who disconnected in the same instant).
         Employee employee = connected.get(freedEmployeeNumber);
         if (employee == null || employee.getBranchId() == null) {
             return;
         }
+        // No queue was ever created for this branch, meaning nobody has ever waited there.
         BlockingQueue<ChatRequest> queue = pendingByBranch.get(employee.getBranchId());
         if (queue == null) {
             return;
         }
+        // Pop the oldest waiting request (FIFO) for this branch, if any.
         ChatRequest request = queue.poll();
         if (request == null) {
             return;
         }
+        // Resolve a human-readable name for the requester when possible, falling back to their
+        // raw employee number if they've since disconnected.
         Employee requester = connected.get(request.getFromEmployeeNumber());
         String requesterName = requester != null ? requester.getFullName() : request.getFromEmployeeNumber();
+        // This only informs the now-free employee that someone wants to talk — it does not
+        // start a session automatically; the free employee still has to call back.
         send(freedEmployeeNumber, MessageType.CHAT_FREE_NOTICE,
                 new ChatFreeNotice(request.getFromEmployeeNumber(), requesterName));
     }
 
     private String findFreeEmployeeAtBranch(String branchId, String excludingEmployeeNumber) {
+        // LinkedHashMap iteration order is registration order, so this deterministically
+        // returns the first-registered eligible employee rather than an arbitrary one.
         for (Map.Entry<String, Employee> entry : connected.entrySet()) {
             String employeeNumber = entry.getKey();
             Employee employee = entry.getValue();
+            // Never match the requester to themselves.
             if (employeeNumber.equals(excludingEmployeeNumber)) {
                 continue;
             }
+            // Must be at the requested branch and not already in another chat.
             if (branchId.equals(employee.getBranchId()) && !isBusy(employeeNumber)) {
                 return employeeNumber;
             }
         }
+        // Nobody eligible found at this branch right now.
         return null;
     }
 
     private void send(String employeeNumber, MessageType type, Object payload) {
+        // The endpoint can be absent if the employee disconnected between when this state
+        // change was decided and when the notification is actually sent — silently drop it
+        // rather than throwing, since there's no client left to receive it anyway.
         ChatEndpoint endpoint = endpoints.get(employeeNumber);
         if (endpoint != null) {
             endpoint.send(type, payload);

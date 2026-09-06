@@ -44,6 +44,8 @@ public class ChatPanel {
     public BorderPane build() {
         ChoiceBox<BranchDto> targetBranchChoice = new ChoiceBox<>();
         targetBranchChoice.setPrefWidth(220);
+        // When the server answers our branch list request below, fill the dropdown
+        // with the branches and default to the first one so it's never left empty.
         connection.on(MessageType.BRANCH_LIST_RESPONSE, message -> {
             BranchListResponse response = message.readPayload(connection.getGson(), BranchListResponse.class);
             targetBranchChoice.setItems(FXCollections.observableArrayList(response.getBranches()));
@@ -51,6 +53,7 @@ public class ChatPanel {
                 targetBranchChoice.getSelectionModel().selectFirst();
             }
         });
+        // Ask the server for the list of branches as soon as this screen is built.
         connection.send(MessageType.BRANCH_LIST_REQUEST, new Object());
         Button requestButton = new Button("Request Chat");
         Label statusLabel = new Label("Not in a chat.");
@@ -68,6 +71,9 @@ public class ChatPanel {
         joinTargetField.setPromptText("Employee # to join their chat");
         Button joinButton = new Button("Join as Shift Manager");
 
+        // "Request Chat" clicked: ask the server to connect this employee with a
+        // free employee at the chosen branch. The server decides whether someone
+        // is free right now (CHAT_STARTED) or this request has to wait (CHAT_QUEUED).
         requestButton.setOnAction(e -> {
             BranchDto target = targetBranchChoice.getValue();
             if (target != null) {
@@ -75,22 +81,31 @@ public class ChatPanel {
             }
         });
 
+        // "Send" clicked (or Enter pressed in the message field, see below): only
+        // sends if we're actually in a chat and there's non-blank text to send.
         sendButton.setOnAction(e -> {
             if (activeSessionId != null && !messageField.getText().trim().isEmpty()) {
                 connection.send(MessageType.CHAT_MESSAGE,
                         new ChatMessageDto(activeSessionId, employee.getEmployeeNumber(), messageField.getText().trim()));
+                // Echo our own message into the transcript immediately rather than waiting
+                // for the server to broadcast it back to us.
                 transcript.appendText("Me: " + messageField.getText().trim() + "\n");
                 messageField.clear();
             }
         });
 
+        // Pressing Enter in the message field behaves the same as clicking Send.
         messageField.setOnAction(e -> sendButton.fire());
 
+        // "End Chat" clicked: tell the server this session is over.
         endButton.setOnAction(e -> connection.send(MessageType.CHAT_END, new ChatEndNotice(activeSessionId)));
 
+        // "Join as Shift Manager" clicked: request to join another employee's
+        // in-progress chat by their employee number (used for supervising/helping).
         joinButton.setOnAction(e -> connection.send(MessageType.CHAT_JOIN_REQUEST,
                 new ChatJoinRequest(joinTargetField.getText().trim())));
 
+        // Server says no one was free to chat right now, so this request is waiting in line.
         connection.on(MessageType.CHAT_QUEUED, message -> {
             ChatQueuedNotice notice = message.readPayload(connection.getGson(), ChatQueuedNotice.class);
             statusLabel.setText("Nobody free at " + notice.getTargetBranchId() + " right now — waiting in queue.");
@@ -101,6 +116,8 @@ public class ChatPanel {
             requestButton.setDisable(true);
         });
 
+        // Server says a chat session has actually begun: remember the session id (needed
+        // to send/end messages), reset the transcript, and flip the buttons into "in a chat" mode.
         connection.on(MessageType.CHAT_STARTED, message -> {
             ChatStartedNotice notice = message.readPayload(connection.getGson(), ChatStartedNotice.class);
             activeSessionId = notice.getSessionId();
@@ -114,6 +131,8 @@ public class ChatPanel {
             requestButton.setDisable(true);
         });
 
+        // Someone tried to reach this employee while they were busy elsewhere; show who,
+        // and offer a one-click button to start a new chat request back to that person.
         connection.on(MessageType.CHAT_FREE_NOTICE, message -> {
             ChatFreeNotice notice = message.readPayload(connection.getGson(), ChatFreeNotice.class);
             statusLabel.setText(notice.getFromEmployeeName() + " tried to reach you while you were busy.");
@@ -123,11 +142,15 @@ public class ChatPanel {
             statusLabel.setGraphic(callBackButton);
         });
 
+        // An incoming chat message pushed from the server (from whoever we're chatting
+        // with) gets appended to the transcript, prefixed with their employee number.
         connection.on(MessageType.CHAT_MESSAGE, message -> {
             ChatMessageDto dto = message.readPayload(connection.getGson(), ChatMessageDto.class);
             transcript.appendText(dto.getFromEmployeeNumber() + ": " + dto.getText() + "\n");
         });
 
+        // The chat session ended (either side ended it, or the server closed it):
+        // clear the session id and flip the buttons back into "not in a chat" mode.
         connection.on(MessageType.CHAT_END, message -> {
             activeSessionId = null;
             statusLabel.setText("Chat ended.");
@@ -147,6 +170,8 @@ public class ChatPanel {
         sendBar.setPadding(new Insets(8));
 
         VBox top = new VBox(8, requestBar);
+        // The "join another employee's chat" bar is only shown to shift managers —
+        // regular employees don't get the option to insert themselves into someone else's session.
         if (employee.getRole() == Role.SHIFT_MANAGER) {
             joinTargetField.setPromptText("Employee # to join (see the Employees tab)");
             HBox joinBar = new HBox(8, joinTargetField, joinButton);

@@ -13,7 +13,7 @@ public class Employee {
     private String fullName;
     private String personalId;
     private String phone;
-    private String accountNumber;
+    private String accountNumber; // bank account used for payroll, not a login/username
     private String branchId;
     private Role role;
 

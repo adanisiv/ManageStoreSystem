@@ -16,6 +16,7 @@ public class ReturningCustomer extends Customer {
 
     @Override
     public double applyDiscount(double amount) {
+        // Charge 95% of the list price (a flat 5% loyalty discount off the top).
         return amount * (1 - LOYALTY_DISCOUNT_RATE);
     }
 }

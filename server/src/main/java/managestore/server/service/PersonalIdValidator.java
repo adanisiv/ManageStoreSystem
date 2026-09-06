@@ -23,16 +23,27 @@ public final class PersonalIdValidator {
         if (id == null || id.trim().isEmpty()) {
             return "Personal ID is required";
         }
+        // Must be purely digits, and no more than 9 of them (a full Israeli ID is 9 digits).
         if (!id.matches("\\d{1,9}")) {
             return "Personal ID must be 1-9 digits";
         }
+        // Left-pad shorter IDs with zeros so the checksum always runs over exactly 9 digits,
+        // matching a full-length ID number.
         String padded = pad(id);
         int sum = 0;
         for (int i = 0; i < 9; i++) {
+            // Pull out the digit at this position (as an int, not a char).
             int digit = padded.charAt(i) - '0';
+            // Every other digit, starting from the first (even index), is used as-is; the
+            // digits in between (odd index) are doubled — the alternating Luhn-style weighting.
             int weighted = digit * (i % 2 == 0 ? 1 : 2);
+            // A doubled digit can become a two-digit number (e.g. 8*2=16). Summing its own
+            // digits (1+6=7) is equivalent to just subtracting 9 from it (16-9=7), which is the
+            // cheaper way to do the same correction without a second loop.
             sum += weighted < 10 ? weighted : weighted - 9;
         }
+        // The ID is valid exactly when the total of all weighted/corrected digits is a
+        // multiple of 10 — the Luhn checksum condition.
         return sum % 10 == 0 ? null : "Personal ID checksum is invalid (not a real Israeli ID number)";
     }
 
@@ -42,9 +53,11 @@ public final class PersonalIdValidator {
 
     private static String pad(String id) {
         StringBuilder sb = new StringBuilder();
+        // Prepend one '0' for every digit short of the required 9-digit length.
         for (int i = id.length(); i < 9; i++) {
             sb.append('0');
         }
+        // Then append the original (unpadded) digits after the leading zeros.
         return sb.append(id).toString();
     }
 }

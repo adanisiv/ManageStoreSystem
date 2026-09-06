@@ -71,6 +71,9 @@ public class LoginScreen {
         grid.add(new Label("Password:"), 0, 3);
         grid.add(passwordField.getNode(), 1, 3);
 
+        // Reply to our own LOGIN_REQUEST: on success, hand off to the main window with
+        // the authenticated employee; on failure, re-enable the button and show why
+        // (wrong password, unknown user, etc.) so the user can try again.
         connection.on(MessageType.LOGIN_RESPONSE, message -> {
             LoginResponse response = message.readPayload(connection.getGson(), LoginResponse.class);
             if (response.isSuccess()) {
@@ -81,15 +84,20 @@ public class LoginScreen {
             }
         });
 
+        // "Log In" clicked: validate the form locally first (so obviously-bad input
+        // never even reaches the network), then open the connection and send the login request.
         loginButton.setOnAction(e -> {
             statusLabel.setText("");
 
+            // Both username and password must be non-empty before attempting anything.
             if (usernameField.getText().trim().isEmpty() || passwordField.getText().isEmpty()) {
                 statusLabel.setText("Enter both a username and a password.");
                 return;
             }
             int port;
             try {
+                // Port must parse as a number; catching the exception here means the ugly
+                // NumberFormatException is turned into a friendly message.
                 port = Integer.parseInt(portField.getText().trim());
             } catch (NumberFormatException ex) {
                 statusLabel.setText("Port must be a number, e.g. " + defaultPort + ".");
@@ -100,6 +108,8 @@ public class LoginScreen {
                 return;
             }
 
+            // Disable the button immediately so a slow/hanging connection attempt can't be
+            // triggered twice by an impatient double-click.
             loginButton.setDisable(true);
             // A retry after a failed attempt used to call connect() again without closing the
             // previous socket/reader thread first — connect() always opens a brand-new one, so a
@@ -108,10 +118,14 @@ public class LoginScreen {
             // response.
             connection.close();
             try {
+                // Open the socket and immediately send the login request; the response
+                // is handled by the listener registered just above.
                 connection.connect(hostField.getText().trim(), port);
                 connection.send(MessageType.LOGIN_REQUEST,
                         new LoginRequest(usernameField.getText().trim(), passwordField.getText()));
             } catch (IOException ex) {
+                // Connection itself failed (bad host/port, server not running, etc.) —
+                // re-enable the button so the user can correct the fields and try again.
                 loginButton.setDisable(false);
                 statusLabel.setText("Could not connect: " + ex.getMessage());
             }

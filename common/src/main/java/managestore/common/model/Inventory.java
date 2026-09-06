@@ -40,9 +40,12 @@ public class Inventory {
     }
 
     public synchronized void addStock(Product product, int quantity) {
+        // Reject zero/negative restock amounts up front.
         requirePositive(quantity);
         int updated;
         try {
+            // Add the incoming quantity to whatever is currently on hand (0 if the
+            // product has never been stocked at this branch).
             updated = Math.addExact(getQuantity(product), quantity);
         } catch (ArithmeticException e) {
             // Plain int addition would silently wrap around to a negative "quantity" instead of
@@ -52,18 +55,23 @@ public class Inventory {
             // trust that blindly.
             throw new StockOverflowException(product.getSku(), quantity, e);
         }
+        // Store the new total and push it out to every observer of this branch's inventory.
         stock.put(product, updated);
         notifyObservers(product, updated);
     }
 
     public synchronized void removeStock(Product product, int quantity) {
+        // Reject zero/negative sale quantities up front.
         requirePositive(quantity);
         int current = getQuantity(product);
+        // Can't sell more than what's actually on the shelf.
         if (current < quantity) {
             throw new InsufficientStockException(product.getSku(), quantity, current);
         }
+        // Subtract the sold quantity from the current stock and record the new total.
         int updated = current - quantity;
         stock.put(product, updated);
+        // Push the new quantity out to every observer so all connected clients see the sale live.
         notifyObservers(product, updated);
     }
 
@@ -73,12 +81,16 @@ public class Inventory {
     }
 
     private void notifyObservers(Product product, int newQuantity) {
+        // Loop over every registered observer (e.g. one per connected client at this
+        // branch) and tell each one about the product's new quantity.
         for (InventoryObserver observer : observers) {
             observer.onStockChanged(product, newQuantity);
         }
     }
 
     private static void requirePositive(int quantity) {
+        // Shared guard used by both addStock and removeStock: a quantity of zero
+        // or less never makes sense for either operation.
         if (quantity <= 0) {
             throw new InvalidQuantityException(quantity);
         }

@@ -44,26 +44,38 @@ public class ReportService {
      */
     public ReportResponse generate(List<SalesRecord> records, ReportScope scope, String filterValue,
                                     ReportFormat format, LocalDate day) {
+        // Narrow to one day first (if requested), then apply the scope/filterValue filter on
+        // top of that narrower set.
         List<SalesRecord> filtered = filter(filterByDay(records, day), scope, filterValue);
+        // LinkedHashMap so the report lines come out in first-seen order, not shuffled by
+        // hashing — makes the output stable and readable.
         Map<String, ReportLineDto> byKey = new LinkedHashMap<>();
 
         for (SalesRecord record : filtered) {
+            // The grouping key (e.g. branch id, SKU, category, or "ALL") this record rolls up into.
             String key = keyFor(scope, record);
             String label = labelFor(scope, record);
+            // If this key already has a running total, fold this record's quantity/revenue
+            // into it instead of starting over, so multiple sales for the same key accumulate.
             ReportLineDto existing = byKey.get(key);
             int quantity = record.getQuantity() + (existing != null ? existing.getQuantitySold() : 0);
             double revenue = record.getAmountCharged() + (existing != null ? existing.getRevenue() : 0);
             byKey.put(key, new ReportLineDto(label, quantity, revenue));
         }
 
+        // Grand totals across every line, computed once the per-key aggregation is done.
         List<ReportLineDto> lines = new ArrayList<>(byKey.values());
         int totalQuantity = lines.stream().mapToInt(ReportLineDto::getQuantitySold).sum();
         double totalRevenue = lines.stream().mapToDouble(ReportLineDto::getRevenue).sum();
         String title = titleFor(scope, filterValue, day);
 
+        // Only build the Word document when the caller actually asked for that format — the
+        // export is comparatively expensive, so it's skipped entirely for JSON/plain responses.
         String wordBase64 = null;
         if (format == ReportFormat.WORD) {
             byte[] bytes = wordExporter.export(title, lines, totalQuantity, totalRevenue);
+            // Encode the binary .docx bytes as Base64 text so they can travel inside the
+            // same DTO/protocol as the rest of the (text) report data.
             wordBase64 = Base64.getEncoder().encodeToString(bytes);
         }
 
@@ -72,11 +84,15 @@ public class ReportService {
 
     /** Compares each sale's {@link SalesRecord#getTimestamp()} against {@code day} in UTC, so results are deterministic regardless of server timezone. */
     private List<SalesRecord> filterByDay(List<SalesRecord> records, LocalDate day) {
+        // No day filter requested — pass every record through unchanged.
         if (day == null) {
             return records;
         }
         List<SalesRecord> filtered = new ArrayList<>();
         for (SalesRecord record : records) {
+            // Convert the record's instant to a calendar date in UTC before comparing, so the
+            // same sale is always classified into the same day no matter what timezone the
+            // server happens to be running in.
             if (day.equals(record.getTimestamp().atZone(ZoneOffset.UTC).toLocalDate())) {
                 filtered.add(record);
             }
@@ -91,12 +107,14 @@ public class ReportService {
      * report is broken rather than like a typo.
      */
     private List<SalesRecord> filter(List<SalesRecord> records, ReportScope scope, String filterValue) {
+        // No filter value — every record in scope stays.
         if (filterValue == null) {
             return records;
         }
         String trimmed = filterValue.trim();
         List<SalesRecord> filtered = new ArrayList<>();
         for (SalesRecord record : records) {
+            // Case-insensitive comparison against this record's grouping key for the scope.
             if (trimmed.equalsIgnoreCase(keyFor(scope, record))) {
                 filtered.add(record);
             }
@@ -150,6 +168,8 @@ public class ReportService {
             default:
                 base = "Sales Report";
         }
+        // Layer on optional suffixes: first the filter value in parentheses, then the day —
+        // either, both, or neither may be present depending on what the caller asked for.
         String withFilter = filterValue != null ? base + " (" + filterValue + ")" : base;
         return day != null ? withFilter + " on " + day : withFilter;
     }

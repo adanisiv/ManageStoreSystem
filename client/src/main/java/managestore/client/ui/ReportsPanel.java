@@ -48,6 +48,8 @@ public class ReportsPanel {
         scopeChoice.getSelectionModel().select(ReportScope.BRANCH);
         TextField filterField = new TextField();
         filterField.setPromptText(filterHintFor(ReportScope.BRANCH));
+        // Update the filter field's placeholder text whenever the scope changes, so it
+        // always shows an example relevant to what's currently selected (branch ID vs. SKU, etc.).
         scopeChoice.valueProperty().addListener((obs, oldScope, newScope) -> filterField.setPromptText(filterHintFor(newScope)));
         DatePicker dayPicker = new DatePicker();
         dayPicker.setPromptText("Day (optional)");
@@ -74,6 +76,10 @@ public class ReportsPanel {
         controls.getStyleClass().add("toolbar");
         controls.setPadding(new Insets(8));
 
+        // "Generate" clicked: any previously fetched Word file is no longer relevant to a
+        // new report, so clear it and disable Save until the new response arrives. An empty
+        // filter field is sent as null so "no filter" reaches the server unambiguously,
+        // rather than as an empty string that a scope-specific match might treat differently.
         generateButton.setOnAction(e -> {
             saveWordButton.setDisable(true);
             pendingWordFile = null;
@@ -83,6 +89,9 @@ public class ReportsPanel {
                     new ReportRequest(scopeChoice.getValue(), filterValue, formatChoice.getValue(), day));
         });
 
+        // "Save as Word..." clicked: only usable once a WORD-format report response has
+        // actually arrived and decoded the file bytes (see pendingWordFile below). Opens the
+        // native save dialog and writes the already-decoded bytes straight to the chosen path.
         saveWordButton.setOnAction(e -> {
             if (pendingWordFile == null) {
                 return;
@@ -100,6 +109,11 @@ public class ReportsPanel {
             }
         });
 
+        // Reply to our own REPORT_REQUEST: populate the title, table rows and totals from
+        // the JSON part of the response every time. If the request was for WORD format, the
+        // response additionally carries the .docx file Base64-encoded — decode it once here
+        // and keep the raw bytes around so "Save as Word" can write them out without
+        // re-contacting the server.
         connection.on(MessageType.REPORT_RESPONSE, message -> {
             ReportResponse response = message.readPayload(connection.getGson(), ReportResponse.class);
             titleLabel.setText(response.getTitle());

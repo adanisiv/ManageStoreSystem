@@ -10,6 +10,9 @@ public class Account {
 
     private final String employeeNumber;
     private final String username;
+    // The password itself is never stored — only its salted hash, plus the
+    // random salt used when hashing it, so two identical passwords never
+    // produce the same stored value and a leaked hash can't be reversed easily.
     private String passwordHash;
     private String passwordSalt;
 
@@ -36,6 +39,8 @@ public class Account {
         return passwordSalt;
     }
 
+    // Lets a password change (hash + salt together) update this same Account
+    // instance instead of requiring a brand-new object to be constructed.
     public void setPassword(String passwordHash, String passwordSalt) {
         this.passwordHash = passwordHash;
         this.passwordSalt = passwordSalt;

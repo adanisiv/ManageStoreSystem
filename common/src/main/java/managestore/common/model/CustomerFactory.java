@@ -11,6 +11,7 @@ public final class CustomerFactory {
     }
 
     public static Customer create(CustomerType type, String personalId, String fullName, String phone) {
+        // Branch on the requested tag and construct the matching concrete subclass.
         switch (type) {
             case NEW:
                 return new NewCustomer(personalId, fullName, phone);
@@ -19,6 +20,8 @@ public final class CustomerFactory {
             case VIP:
                 return new VIPCustomer(personalId, fullName, phone);
             default:
+                // Defensive fallback: only reachable if CustomerType gains a new
+                // constant that this switch hasn't been updated to handle.
                 throw new IllegalArgumentException("Unknown customer type: " + type);
         }
     }

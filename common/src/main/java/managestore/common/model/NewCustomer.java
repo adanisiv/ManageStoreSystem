@@ -14,6 +14,7 @@ public class NewCustomer extends Customer {
 
     @Override
     public double applyDiscount(double amount) {
+        // No discount rule for a first-time customer: the amount charged equals the list price.
         return amount;
     }
 }

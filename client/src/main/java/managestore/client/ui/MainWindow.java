@@ -37,7 +37,11 @@ public class MainWindow {
         tabs.getTabs().add(tab("👥 Customers", new CustomersPanel(connection).build()));
         tabs.getTabs().add(tab("📊 Reports", new ReportsPanel(connection).build()));
         tabs.getTabs().add(tab("💬 Chat", new ChatPanel(connection, employee).build()));
+        // The Employees tab itself is visible to every role; EmployeesPanel handles its
+        // own finer-grained, role-based visibility internally (add/delete are admin-only).
         tabs.getTabs().add(tab("🧑‍💼 Employees", new EmployeesPanel(connection, employee).build()));
+        // The System Log tab, on the other hand, is hidden from the tab bar entirely
+        // unless the logged-in employee is an admin.
         if (employee.getRole() == Role.ADMIN) {
             tabs.getTabs().add(tab("📋 System Log", new LogsPanel(connection).build()));
         }

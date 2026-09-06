@@ -30,19 +30,28 @@ public class CustomerDirectory {
     }
 
     public void add(Customer customer) {
+        // putIfAbsent only inserts when the key is not already present, and returns the
+        // existing value if it was — so a non-null return here means this personal ID
+        // was already registered, and the new customer was NOT inserted.
         if (customersByPersonalId.putIfAbsent(customer.getPersonalId(), customer) != null) {
             throw new DuplicateCustomerException(customer.getPersonalId());
         }
+        // Push the newly added customer out to every registered observer (e.g. connected
+        // clients) so their customer lists update live instead of needing a refresh/poll.
         for (CustomerDirectoryObserver observer : observers) {
             observer.onCustomerAdded(customer);
         }
     }
 
     public void update(Customer customer) {
+        // Updating a customer that was never added would silently create one, so
+        // require the personal ID to already exist first.
         if (!customersByPersonalId.containsKey(customer.getPersonalId())) {
             throw new CustomerNotFoundException(customer.getPersonalId());
         }
+        // Overwrite the stored record with the new data for this personal ID.
         customersByPersonalId.put(customer.getPersonalId(), customer);
+        // Notify every observer with the updated customer so all connected views stay in sync.
         for (CustomerDirectoryObserver observer : observers) {
             observer.onCustomerUpdated(customer);
         }

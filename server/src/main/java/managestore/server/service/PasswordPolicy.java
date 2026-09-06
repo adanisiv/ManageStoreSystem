@@ -24,15 +24,20 @@ public class PasswordPolicy {
 
     /** @return null if the password satisfies the policy, otherwise a human-readable reason it doesn't. */
     public String validate(String password) {
+        // A null password (or one shorter than the minimum) fails immediately, before
+        // any character-by-character checks run.
         if (password == null || password.length() < minLength) {
             return "Password must be at least " + minLength + " characters";
         }
+        // noneMatch short-circuits as soon as one digit is found, so this only scans the
+        // whole password when there truly isn't a single digit in it.
         if (requireDigit && password.chars().noneMatch(Character::isDigit)) {
             return "Password must contain at least one digit";
         }
         if (requireLetter && password.chars().noneMatch(Character::isLetter)) {
             return "Password must contain at least one letter";
         }
+        // Reaching here means every enabled rule passed.
         return null;
     }
 

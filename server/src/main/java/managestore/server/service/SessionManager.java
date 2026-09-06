@@ -31,6 +31,10 @@ public final class SessionManager {
      * that username already has an active session elsewhere.
      */
     public boolean tryLogin(String username, String sessionId) {
+        // putIfAbsent only inserts (and returns null) when the username has no active session
+        // yet; if one is already present it returns the existing value without overwriting it.
+        // ConcurrentHashMap makes this check-and-insert atomic across threads, so two
+        // connections racing to log in as the same username can't both "win".
         return activeSessionIdByUsername.putIfAbsent(username, sessionId) == null;
     }
 

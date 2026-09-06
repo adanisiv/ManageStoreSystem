@@ -19,6 +19,8 @@ public class StoreChain {
     private final CustomerDirectory customerDirectory = new CustomerDirectory();
 
     public void addBranch(Branch branch) {
+        // Indexed by branch ID so a specific branch can be looked up directly
+        // instead of scanning a list.
         branches.put(branch.getId(), branch);
     }
 
@@ -27,10 +29,14 @@ public class StoreChain {
     }
 
     public List<Branch> allBranches() {
+        // Copy the live map's values into a new list and wrap it as unmodifiable,
+        // so callers get a safe snapshot instead of a view backed by the internal map.
         return Collections.unmodifiableList(new ArrayList<>(branches.values()));
     }
 
     public void addProduct(Product product) {
+        // Catalog entries are keyed by SKU: the same product (price/name/category)
+        // is shared across every branch, only stock quantity is branch-specific.
         productCatalog.put(product.getSku(), product);
     }
 

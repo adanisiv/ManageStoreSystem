@@ -36,6 +36,7 @@ public class AuthService {
     }
 
     public LoginResponse login(String username, String password) {
+        // Look up the account by username first; it may not exist at all.
         Optional<Account> account = accountRepository.findByUsername(username);
         if (!account.isPresent()
                 || !PasswordHasher.matches(password, account.get().getPasswordSalt(), account.get().getPasswordHash())) {
@@ -44,8 +45,11 @@ public class AuthService {
             return LoginResponse.failure("Invalid username or password");
         }
 
+        // Credentials check out; now resolve the employee profile the account is linked to.
         Optional<Employee> employee = employeeRepository.findByEmployeeNumber(account.get().getEmployeeNumber());
         if (!employee.isPresent()) {
+            // The account exists and the password matched, but its employee record is gone
+            // (e.g. deleted out from under it) — treat as a login failure, not a crash.
             return LoginResponse.failure("Account is not linked to an employee record");
         }
         return LoginResponse.success(employee.get());
@@ -53,15 +57,21 @@ public class AuthService {
 
     /** Used by the Admin screen to provision a new employee's login. */
     public void createAccount(Employee employee, String username, String rawPassword) {
+        // Reject weak passwords before touching either repository.
         String policyViolation = passwordPolicy.validate(rawPassword);
         if (policyViolation != null) {
             throw new ValidationException("Password", policyViolation);
         }
+        // Usernames must be unique across all accounts.
         if (accountRepository.findByUsername(username).isPresent()) {
             throw new DuplicateUsernameException(username);
         }
+        // Generate a fresh random salt and hash the raw password with it — the plaintext
+        // password itself is never persisted anywhere.
         String salt = PasswordHasher.newSalt();
         String hash = PasswordHasher.hash(rawPassword, salt);
+        // Persist the employee profile first, then the account that links a username/password
+        // to that employee's number.
         employeeRepository.save(employee);
         accountRepository.save(new Account(employee.getEmployeeNumber(), username, hash, salt));
     }
@@ -73,6 +83,8 @@ public class AuthService {
      * missing — has nothing left to even find. No-op if the employee number doesn't exist.
      */
     public void deleteAccount(String employeeNumber) {
+        // Remove both halves together so no orphaned employee-without-account or
+        // account-without-employee record is left behind.
         employeeRepository.delete(employeeNumber);
         accountRepository.deleteByEmployeeNumber(employeeNumber);
     }

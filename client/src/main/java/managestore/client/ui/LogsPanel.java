@@ -50,17 +50,23 @@ public class LogsPanel {
         typeFilter.getSelectionModel().selectFirst();
         Button refreshButton = new Button("Refresh");
 
+        // Shared by both the Refresh button and the filter dropdown: build a request using
+        // whatever type is currently selected (null meaning "all types") and send it.
         Runnable refresh = () -> {
             LogType selected = typeFilter.getValue();
             connection.send(MessageType.LOG_LIST_REQUEST, new LogListRequest(selected != null ? selected.name() : null));
         };
+        // "Refresh" clicked: re-request logs with the current filter.
         refreshButton.setOnAction(e -> refresh.run());
+        // Changing the filter dropdown re-requests immediately, without needing a separate click.
         typeFilter.valueProperty().addListener((obs, old, current) -> refresh.run());
 
         HBox toolbar = new HBox(8, new Label("Filter by type:"), typeFilter, refreshButton);
         toolbar.getStyleClass().add("toolbar");
         toolbar.setPadding(new Insets(8));
 
+        // Reply to whichever LOG_LIST_REQUEST was most recently sent (initial load,
+        // Refresh click, or filter change) — re-sorts and replaces the table contents.
         connection.on(MessageType.LOG_LIST_RESPONSE, message -> {
             LogListResponse response = message.readPayload(connection.getGson(), LogListResponse.class);
             // The server returns entries oldest-first (the natural order to append/store them in);
@@ -70,6 +76,7 @@ public class LogsPanel {
             table.getItems().setAll(newestFirst);
         });
 
+        // Initial load, unfiltered, when the panel is first built.
         connection.send(MessageType.LOG_LIST_REQUEST, new LogListRequest(null));
 
         BorderPane pane = new BorderPane();

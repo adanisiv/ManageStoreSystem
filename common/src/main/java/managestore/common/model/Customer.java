@@ -66,16 +66,24 @@ public abstract class Customer {
      * every customer type — only applyDiscount differs per subclass.
      */
     public final PurchaseResult purchase(Product product, int quantity, Inventory inventory) {
+        // Step 1: reject a nonsensical purchase before touching any state.
         if (quantity <= 0) {
             throw new InvalidQuantityException(quantity);
         }
+        // Step 2: read how much of this product the branch currently has on hand.
         int available = inventory.getQuantity(product);
+        // Step 3: make sure there is enough stock to cover the requested quantity.
         if (available < quantity) {
             throw new InsufficientStockException(product.getSku(), quantity, available);
         }
+        // Step 4: compute the full price before any discount (unit price * quantity).
         double listTotal = product.getPrice() * quantity;
+        // Step 5: hand the pre-discount total to the subclass-specific hook; each
+        // concrete customer type (New/Returning/VIP) decides how much is actually charged.
         double charged = applyDiscount(listTotal);
+        // Step 6: only after the price is settled, decrement the branch's stock.
         inventory.removeStock(product, quantity);
+        // Step 7: package everything about this sale (list price vs. charged price) for the caller.
         return new PurchaseResult(this, product, quantity, listTotal, charged);
     }
 
@@ -84,6 +92,8 @@ public abstract class Customer {
         if (this == o) return true;
         if (!(o instanceof Customer)) return false;
         Customer customer = (Customer) o;
+        // Two customers are considered the same person if their personal IDs match,
+        // regardless of subclass (New/Returning/VIP) or any other field.
         return personalId.equals(customer.personalId);
     }
 

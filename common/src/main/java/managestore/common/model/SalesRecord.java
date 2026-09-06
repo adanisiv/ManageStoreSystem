@@ -13,6 +13,8 @@ public class SalesRecord {
     private final Instant timestamp;
 
     public SalesRecord(String branchId, PurchaseResult purchaseResult) {
+        // Default path: reuse the timestamp already captured when the purchase happened,
+        // delegating to the other constructor instead of duplicating field assignments.
         this(branchId, purchaseResult, purchaseResult.getTimestamp());
     }
 

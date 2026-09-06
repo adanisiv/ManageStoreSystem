@@ -10,6 +10,8 @@ public class Branch {
     private final String id;
     private String name;
     private final Inventory inventory = new Inventory();
+    // CopyOnWriteArrayList so the staff list can be safely iterated (e.g. broadcasting
+    // to every employee) while another thread adds/removes an employee concurrently.
     private final List<Employee> staff = new CopyOnWriteArrayList<>();
 
     public Branch(String id, String name) {

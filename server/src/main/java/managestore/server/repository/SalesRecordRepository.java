@@ -25,6 +25,8 @@ public class SalesRecordRepository {
         records.add(record);
     }
 
+    // Returns a copy, not the live list, so callers can freely read/iterate
+    // it without seeing later additions or being able to mutate internal state.
     public List<SalesRecord> all() {
         return new ArrayList<>(records);
     }

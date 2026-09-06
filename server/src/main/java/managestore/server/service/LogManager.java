@@ -37,10 +37,12 @@ public final class LogManager {
     }
 
     public List<LogEvent> all() {
+        // Return a defensive copy so callers can't mutate the shared internal list.
         return new ArrayList<>(events);
     }
 
     public List<LogEvent> byType(LogType type) {
+        // Walk the full event history and keep only the ones matching the requested type.
         List<LogEvent> filtered = new ArrayList<>();
         for (LogEvent event : events) {
             if (event.getType() == type) {

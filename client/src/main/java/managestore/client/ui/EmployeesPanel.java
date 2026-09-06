@@ -48,10 +48,13 @@ public class EmployeesPanel {
         table.getColumns().add(column("Branch", "branchId"));
         table.getColumns().add(column("Role", "role"));
 
+        // Whenever the server answers a roster request (the initial one below, or a
+        // manual refresh), replace the table's contents wholesale with the latest list.
         connection.on(MessageType.EMPLOYEE_LIST_RESPONSE, message -> {
             EmployeeListResponse response = message.readPayload(connection.getGson(), EmployeeListResponse.class);
             table.getItems().setAll(response.getEmployees());
         });
+        // Initial load of the roster when this panel is first built.
         connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
 
         // Unlike Inventory/Customers, the roster has no live push (nothing subscribes to employee
@@ -64,6 +67,7 @@ public class EmployeesPanel {
         refreshBar.getStyleClass().add("toolbar");
         refreshBar.setPadding(new Insets(8));
 
+        // Role-based visibility: only admins get the delete button and add-employee form.
         if (currentEmployee.getRole() == Role.ADMIN) {
             refreshBar.getChildren().add(buildDeleteButton(table));
         }
@@ -74,6 +78,8 @@ public class EmployeesPanel {
         if (currentEmployee.getRole() == Role.ADMIN) {
             pane.setBottom(buildAddEmployeeForm());
         } else {
+            // Non-admins see an explanatory note instead of the form, so it's clear
+            // why the option isn't there rather than looking like a missing feature.
             Label adminOnlyNote = new Label("Only an ADMIN account can add new employees — log in as admin (e.g. admin / Admin1234 on the demo server) to use this form.");
             adminOnlyNote.setWrapText(true);
             adminOnlyNote.setStyle("-fx-text-fill: -muted; -fx-padding: 10px;");
@@ -92,6 +98,9 @@ public class EmployeesPanel {
     private Button buildDeleteButton(TableView<Employee> table) {
         Button deleteButton = new Button("Delete Selected");
         deleteButton.getStyleClass().add("secondary");
+        // The button stays disabled whenever nothing is selected, or the selected row
+        // is the logged-in admin's own account. This binding re-evaluates automatically
+        // every time the table selection changes.
         deleteButton.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(
                 () -> {
                     Employee selected = table.getSelectionModel().getSelectedItem();
@@ -99,6 +108,8 @@ public class EmployeesPanel {
                 },
                 table.getSelectionModel().selectedItemProperty()));
 
+        // Reply to our own EMPLOYEE_DELETE_REQUEST: on success, re-fetch the roster so
+        // the deleted employee disappears from the table; on failure, show why.
         connection.on(MessageType.EMPLOYEE_DELETE_RESPONSE, message -> {
             EmployeeDeleteResponse response = message.readPayload(connection.getGson(), EmployeeDeleteResponse.class);
             if (response.isSuccess()) {
@@ -108,6 +119,8 @@ public class EmployeesPanel {
             }
         });
 
+        // "Delete Selected" clicked: confirm with the user before doing anything
+        // irreversible, then only send the delete request if they explicitly click OK.
         deleteButton.setOnAction(e -> {
             Employee selected = table.getSelectionModel().getSelectedItem();
             if (selected == null) {
@@ -140,6 +153,7 @@ public class EmployeesPanel {
         TextField accountField = new TextField();
         accountField.setPromptText("Account #");
         ChoiceBox<BranchDto> branchChoice = new ChoiceBox<>();
+        // Populate the branch dropdown once the server answers, defaulting to the first branch.
         connection.on(MessageType.BRANCH_LIST_RESPONSE, message -> {
             BranchListResponse response = message.readPayload(connection.getGson(), BranchListResponse.class);
             branchChoice.setItems(FXCollections.observableArrayList(response.getBranches()));
@@ -158,11 +172,13 @@ public class EmployeesPanel {
         Label statusLabel = new Label();
         statusLabel.getStyleClass().add("status-label");
 
+        // Reply to our own EMPLOYEE_ADD_REQUEST (sent from the "Add Employee" button below).
         connection.on(MessageType.EMPLOYEE_ADD_RESPONSE, message -> {
             EmployeeAddResponse response = message.readPayload(connection.getGson(), EmployeeAddResponse.class);
             UiUtil.setStatus(statusLabel, response.isSuccess(),
                     response.isSuccess() ? "Employee added." : "Failed: " + response.getErrorMessage());
             if (response.isSuccess()) {
+                // Refresh the roster table so the new employee shows up immediately.
                 connection.send(MessageType.EMPLOYEE_LIST_REQUEST, new Object());
                 // Clear the whole form, not just the obviously-sensitive password field: leaving
                 // the previous employee's number/personal ID/username sitting there invites
@@ -178,6 +194,10 @@ public class EmployeesPanel {
             }
         });
 
+        // "Add Employee" clicked: a branch must be selectable (guards against the edge
+        // case where the branch list hasn't loaded yet), then send the full form as a
+        // single request. Field-level validation (duplicate employee number, etc.) is
+        // left to the server; the response comes back above.
         addButton.setOnAction(e -> {
             BranchDto branch = branchChoice.getValue();
             if (branch == null) {

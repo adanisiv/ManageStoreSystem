@@ -42,8 +42,8 @@ A few decisions worth calling out:
   "your input is invalid" from "the store can't do that right now," each carrying the
   failure's data as fields.
 
-Full write-up with class diagrams, all eight design patterns, and the trade-offs:
-**[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+Full write-up — class hierarchy, every design pattern and where it lives, the wire
+protocol, and the trade-offs: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 
 ## Running it
 

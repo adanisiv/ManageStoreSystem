@@ -70,10 +70,22 @@ hole the template leaves open.
 | **Observer** | `Inventory` and `CustomerDirectory` are Subjects; `InventoryObserver` / `CustomerDirectoryObserver` are the interfaces; each logged-in `ClientHandler` registers itself | inventory and customer changes propagate live to every relevant employee |
 | **Mediator + FIFO queue** | `ChatMediator` + per-branch `BlockingQueue<ChatRequest>` | cross-branch chat routing, queueing when nobody is free, notifying on free-up |
 | **Singleton** | `SessionManager`, `LogManager` | "one user, one session" and "one system log" only make sense as a single process-wide source of truth |
-| **Factory** | `CustomerFactory` | maps a `CustomerType` to the right subclass in exactly one place |
-| **Strategy** | `ReportExporter` ← `JsonReportExporter`, `WordReportExporter` | the same report data rendered as JSON or as a real `.docx` |
+| **Static factory** | `CustomerFactory` | maps a `CustomerType` to the right subclass in exactly one place. Worth naming precisely: this is the *simple factory* idiom — a private constructor and one `static create(...)` — not GoF Factory Method (no subclass overrides a creator) and not Abstract Factory (no product families) |
+| **Strategy** | `ReportExporter` ← `WordReportExporter`, `JsonReportExporter` | the export step sits behind an interface, so `ReportService` never names a concrete exporter. See the note below on how far this is actually exercised |
 | **Repository** | `EmployeeRepository`, `AccountRepository` interfaces + their `JsonFile…` implementations | storage is swappable (JSON files today, a DB later) without touching services |
-| **Facade** | `ServerContext` | one object carrying the shared server state each `ClientHandler` thread needs |
+
+`ServerContext` is deliberately **not** on this list. It is a context/parameter object —
+eight fields and eight getters — that spares every `ClientHandler` constructor a long
+parameter list. It is sometimes mistaken for a Facade, but it is the opposite of one: a
+Facade exposes a single high-level interface that *hides* its subsystems, whereas callers
+here still reach through it (`context.getAuthService().login(...)`).
+
+**How far Strategy actually goes.** The seam is real and is exercised — `ReportServiceTest`
+injects a stub exporter through it. But in production only `WordReportExporter` is wired
+(`ServerContext` constructs it directly), and the JSON path returns the line data straight
+out of `ReportResponse` without going through an exporter at all, so `JsonReportExporter`
+has no production caller. The abstraction is sound; its interchangeability is currently
+demonstrated by tests rather than used by the running system.
 
 ## 4. Networking and protocol
 

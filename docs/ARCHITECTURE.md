@@ -172,14 +172,15 @@ and the fact that each type still matches the standard one.
 `Inventory` is the Observer *Subject* and the single point of mutation:
 
 - `addStock` / `removeStock` are `synchronized`, so two employees selling the last unit
-  concurrently cannot both succeed — one gets an `IllegalStateException`.
+  concurrently cannot both succeed — one gets an `InsufficientStockException`.
 - `removeStock` re-checks sufficiency inside the lock, which is what actually makes the
   sale safe (the caller's earlier check is only a fast path).
 - `addStock` uses `Math.addExact`, so a restock quantity large enough to overflow `int`
-  fails loudly instead of silently wrapping stock to a negative number.
-- Every mutation notifies observers, which is how "המלאי מתעדכן אצל כל העובדים בסניף"
-  is implemented — including for the employee who performed the action, who learns the
-  new level through the same push as everyone else rather than a special case.
+  fails loudly (`StockOverflowException`) instead of silently wrapping stock to a
+  negative number.
+- Every mutation notifies observers, which is how a sale or restock reaches every
+  employee at that branch live — including the employee who performed the action, who
+  learns the new level through the same push as everyone else rather than a special case.
 
 ## 8. Chat (`ChatMediator`)
 

@@ -1,72 +1,76 @@
 # ManageStoreSystem
 
-A desktop client–server system for managing a multi-branch clothing retail chain,
-built in Java on raw TCP sockets. Branches share live inventory and customer data,
-employees chat across branches through a routed queue, and managers export sales
-reports as JSON or Word documents.
+A desktop app for managing a clothing store chain with several branches. It runs as a
+server plus multiple client windows that talk to it over the network, so employees at
+different branches all work against the same live data.
 
-**Java 8 · JavaFX · Maven · TCP sockets · Gson · Apache POI · JUnit 5 · 123 tests**
+**Java 8 · JavaFX · Maven · TCP sockets · Gson · Apache POI · JUnit 5**
 
 ## What it does
 
-- **Live sync across clients** — a sale on one machine updates every other employee's
-  inventory table at that branch instantly, pushed over the socket rather than polled.
-- **Cross-branch chat with a waiting queue** — an employee requests any free colleague
-  at another branch; if everyone is busy the request queues, and whoever frees up first
-  is told who was trying to reach them.
-- **Role-based access** — admins manage employee accounts and read the system audit
-  log; sellers and cashiers see only their own branch.
-- **Sales reports** — grouped by branch, product, or category, filterable to a single
-  day, exported as JSON or as a real `.docx`.
-- **Audited** — every registration, sale, restock, and chat is logged, with chat
-  transcripts saved in full.
+- **Inventory per branch.** Each branch has its own stock. Employees sell products to
+  customers and restock them from the supplier.
+- **Everything updates live.** When one employee makes a sale, every other employee at
+  that branch sees the new stock count immediately — no refresh button.
+- **Chat between branches.** An employee can ask to talk to whoever is free at another
+  branch. If everyone there is busy, the request waits in line, and the first person to
+  free up is told who was looking for them.
+- **Different roles see different things.** An admin manages employee accounts and reads
+  the system log; sellers and cashiers only see their own branch.
+- **Sales reports.** By branch, product, or category, optionally for a single day.
+  Exported as JSON or as a real Word document.
+- **A log of everything.** Every new employee, new customer, sale, restock, and chat is
+  recorded, including the full text of each conversation.
 
 ## How it's built
 
-Three Maven modules: `common` (domain model + wire protocol), `server` (networking,
-business logic, persistence), `client` (JavaFX app). The client and server never
-depend on each other — only on `common` — so they can't drift apart on the shape of
-a message.
+Three Maven modules:
 
-A few decisions worth calling out:
+| Module | What's in it |
+|---|---|
+| `common` | The data model (employee, customer, product, branch) and the message format both sides use to talk |
+| `server` | Networking, business logic, saving to disk, logging |
+| `client` | The JavaFX windows the user actually clicks on |
 
-- **A hand-rolled protocol** rather than a framework: line-framed JSON over sockets,
-  one thread per connection, with a single enum defining every legal message type.
-- **Polymorphism over conditionals** for customer pricing — each customer tier is its
-  own class overriding one method, behind a `final` Template Method so no subclass can
-  skip the stock check.
-- **Synchronization only where state is genuinely shared** — inventory mutation, the
-  session registry (`putIfAbsent`, so duplicate logins can't race), and the chat
-  mediator.
-- **Failures are typed, not stringly** — a two-root exception hierarchy separating
-  "your input is invalid" from "the store can't do that right now," each carrying the
-  failure's data as fields.
+The client and the server never depend on each other — both depend only on `common`.
+That way the two sides can't disagree about what a message looks like.
 
-Full write-up — class hierarchy, every design pattern and where it lives, the wire
-protocol, and the trade-offs: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+A few choices worth knowing about:
+
+- **The network layer is written from scratch**, not taken from a framework: each message
+  is one line of JSON sent over a socket, and the server gives every connected client its
+  own thread.
+- **Each customer type is its own class.** A new customer, a returning customer, and a VIP
+  each calculate their discount differently, so instead of one class with `if` statements
+  checking the type, there are three classes that each override one method.
+- **Locking only where it's actually needed** — the places more than one client can touch
+  at the same time: stock levels, the list of who's logged in, and the chat system.
+- **Errors have their own classes** instead of one generic error with different text, so
+  the code can tell "you typed something invalid" apart from "the store can't do that
+  right now."
+
+For the full design write-up — the class hierarchy, every design pattern and where it
+lives, and the trade-offs made — see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Running it
 
-Requires JDK 8 with JavaFX bundled and Maven 3.6+.
+You need JDK 8 that includes JavaFX, and Maven 3.6+.
 
-```
-mvn test          # 123 tests, including real-socket integration tests
-mvn compile
-```
+The easiest way: open the root `pom.xml` in IntelliJ IDEA, run `DemoServerLauncher`, then
+run `ClientMain`. The demo launcher creates two branches, a product catalog, and four
+accounts, so there's data to work with straight away.
 
-Open the root `pom.xml` in IntelliJ IDEA and run `DemoServerLauncher`, then
-`ClientMain` — the demo launcher seeds two branches, a product catalog, and four
-accounts so there's data to work with immediately.
+| Username | Password | Role | Branch |
+|---|---|---|---|
+| `admin` | `Admin1234` | Admin | — (sees the System Log) |
+| `mgr1` | `Manager123` | Shift manager | Downtown / B1 |
+| `seller1` | `Seller123` | Seller | Downtown / B1 |
+| `seller2` | `Seller123` | Cashier | Uptown / B2 |
 
-| Username  | Password    | Role          |
-|-----------|-------------|---------------|
-| `admin`   | `Admin1234` | Admin         |
-| `mgr1`    | `Manager123`| Shift manager |
-| `seller1` | `Seller123` | Seller        |
-| `seller2` | `Seller123` | Cashier       |
+Run `ClientMain` a second time to log in as a second employee — that's how to see stock
+syncing between two windows, or chat between two branches.
 
-Run `ClientMain` a second time to log in as another employee and watch inventory sync
-or chat between them.
+To run the tests: `mvn test`.
 
-Terminal instructions, and how to start from an empty network instead of demo data,
-are in **[docs/RUNNING.md](docs/RUNNING.md)**.
+Running from a terminal instead of an IDE, and starting from an empty system rather than
+demo data, are both covered in **[docs/RUNNING.md](docs/RUNNING.md)**.

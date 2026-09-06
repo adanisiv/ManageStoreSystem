@@ -1,7 +1,30 @@
 # Architecture
 
 This document describes the system **as built**: every class named here exists in the
-repository, matched to the design decision behind it.
+repository, matched to the design decision behind it. It's a reference to look things
+up in, not something to read start to finish.
+
+**If you only read three sections:** [§1](#1-high-level-shape) for how the three modules
+fit together, [§3](#3-design-patterns-actually-used) for the design patterns and where
+each one lives, [§4](#4-networking-and-protocol) for how a message travels from a click
+to the server and back.
+
+| | |
+|---|---|
+| [1. High-level shape](#1-high-level-shape) | the three modules and why they're split that way |
+| [2. Domain model](#2-domain-model-commonmodel) | the classes, and why `Customer` is a hierarchy |
+| [3. Design patterns](#3-design-patterns-actually-used) | which patterns, in which class |
+| [4. Networking and protocol](#4-networking-and-protocol) | the message format and the request loop |
+| [5. Authentication and sessions](#5-authentication-sessions-and-the-duplicate-login-rule) | login, password hashing, one-session-per-user |
+| [6. Roles and input validation](#6-admin-roles-and-input-validation) | who can do what, and the validators |
+| [7. Inventory](#7-inventory-sale-and-purchase) | selling, restocking, and the locking |
+| [8. Chat](#8-chat-chatmediator) | the mediator and the waiting queue |
+| [9. Logging](#9-logging) | what gets audited |
+| [10. Reports](#10-reports) | grouping, filtering, and the Word export |
+| [11. Persistence](#11-persistence--and-what-is-deliberately-not-persisted) | what's saved to disk and what isn't |
+| [12. Testing](#12-testing) | what's covered and how |
+| [13. Package layout](#13-package-layout-as-built) | where every file lives |
+| [14. Trade-offs and limitations](#14-design-trade-offs-and-known-limitations) | the known gaps, stated as choices |
 
 ## 1. High-level shape
 
@@ -132,9 +155,8 @@ Three separate classes, deliberately not merged:
 
 `AuthService` deliberately does **not** touch `SessionManager`. "Are these credentials
 correct?" and "is this user allowed to open a session right now?" are two different
-questions; `ClientHandler.handleLogin` asks them in order. Keeping them apart means
-each is independently testable, which is why `AuthServiceTest` needs no session state
-and `SessionManagerTest` needs no passwords.
+questions; `ClientHandler.handleLogin` asks them in order, which keeps each one
+independently testable.
 
 ## 6. Admin, roles, and input validation
 
@@ -150,14 +172,11 @@ and `SessionManagerTest` needs no passwords.
 - **`PhoneValidator`** — accepts Israeli landline/mobile shapes after stripping spaces
   and dashes; deliberately loose enough not to reject real numbers, strict enough to
   catch `"asdf"`.
-- **`FullNameValidator`, `AccountNumberValidator`, `EmployeeNumberValidator`** — full
-  name, phone, and personal ID had real validators from early on; these three fields
-  were only checked for being non-blank until this pass, so `"12345"` was an accepted
-  full name and `"ASAACA"` an accepted bank account number. None of the three has a
-  universal checkable format the way a personal ID does, so each stays loose (a name
-  needs one letter and a sane length, an account number needs a digit and a plausible
-  shape, an employee number just needs a plausible character set) — same philosophy as
-  `PhoneValidator`: catch obvious garbage, don't pretend to be a source of truth.
+- **`FullNameValidator`, `AccountNumberValidator`, `EmployeeNumberValidator`** — none of
+  these three has a universal checkable format the way a personal ID does, so each stays
+  loose: a name needs a sane length and at least one letter, an account number a digit
+  and a plausible shape, an employee number a plausible character set. Same philosophy as
+  `PhoneValidator` — catch obvious garbage, don't pretend to be a source of truth.
 - **Uniqueness** — a duplicate username is rejected by `AuthService.createAccount`, and
   a duplicate employee number by `ClientHandler` before the account is created.
   Without the second check, re-adding an existing number would silently overwrite that
@@ -181,11 +200,10 @@ call for different responses:
   the store cannot satisfy it right now; the identical request could succeed later:
   `InsufficientStockException`, `DuplicateCustomerException`, `CustomerNotFoundException`.
 
-Each root extends the standard exception it replaced, which is what made the change
-safe to make late: every existing `catch (IllegalArgumentException | IllegalStateException)`
-in `ClientHandler` keeps working untouched, and only code that wants the precise reason
-has to name the subclass. `DomainExceptionTest` pins both halves down — the carried data,
-and the fact that each type still matches the standard one.
+Each root extends the standard exception it stands in for, so a `catch
+(IllegalArgumentException | IllegalStateException)` still catches everything and only
+code that wants the precise reason names a subclass. `DomainExceptionTest` covers both
+halves: the data each one carries, and that it still matches the standard type.
 
 ## 7. Inventory: sale and purchase
 
@@ -199,8 +217,8 @@ and the fact that each type still matches the standard one.
   fails loudly (`StockOverflowException`) instead of silently wrapping stock to a
   negative number.
 - Every mutation notifies observers, which is how a sale or restock reaches every
-  employee at that branch live — including the employee who performed the action, who
-  learns the new level through the same push as everyone else rather than a special case.
+  employee at that branch live — including whoever performed it, through the same push
+  as everyone else rather than a special case.
 
 ## 8. Chat (`ChatMediator`)
 
@@ -215,11 +233,10 @@ waiting. Employees never hold references to each other.
   them, so they can call back via `requestDirectChat`.
 - `joinChat` lets a `SHIFT_MANAGER` join an existing session (a session holds a
   participant *list*, not a pair).
-- **All three entry points refuse an already-busy employee.** Without that guard,
-  starting a second conversation would repoint the employee's session mapping while the
-  first session still listed them, so ending the first would delete their real mapping
-  to the second and tell their client the wrong chat ended. Re-requesting the session
-  you are already in is treated as a harmless no-op rather than an error.
+- **All three entry points refuse an already-busy employee**, otherwise a second
+  conversation would repoint that employee's session mapping while the first session
+  still listed them — ending the first would then tell their client the wrong chat
+  ended. Re-requesting the session you are already in is a harmless no-op, not an error.
 - `unregister` (on disconnect) also purges that employee's own queued requests, so a
   person who closed the app can't later surface as a "waiting for you" notice.
 - Every state field is guarded by one monitor (`synchronized` methods on the mediator),
@@ -268,13 +285,12 @@ Both JSON repositories write to a temp file and then **atomically rename** it ov
 real one, so a crash mid-write cannot leave a half-written, corrupt file — a reader only
 ever sees the complete old version or the complete new one.
 
-`Customer` is polymorphic, and Gson can serialize a concrete instance but cannot know
-which subclass to rebuild on the way back without extra type machinery. Rather than add
-that machinery for data that doesn't need to survive a restart, customers and sales stay
-in memory — a deliberate, documented trade-off, isolated behind the same repository
-interfaces so a real database could replace it without touching any service.
+`Customer` is polymorphic, and Gson can serialize a concrete instance but can't know
+which subclass to rebuild without extra type machinery. Rather than add that for data
+that doesn't need to survive a restart, customers and sales stay in memory — behind the
+same repository interfaces, so a database could replace them without touching a service.
 
-## 12. Testing (123 tests)
+## 12. Testing
 
 | Area | Tests |
 |---|---|

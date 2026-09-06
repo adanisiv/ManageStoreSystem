@@ -3,9 +3,9 @@ package managestore.common.exception;
 /**
  * A quantity that has to be a positive count of items was zero or negative.
  *
- * <p>Thrown by both {@code Inventory} and {@code Customer.purchase}, which is the
- * point of giving it a name: the same domain rule is enforced in two places, and
- * naming it once means neither copy can drift into wording the failure differently.
+ * <p>Both {@code Inventory} and {@code Customer.purchase} throw this. That is the
+ * whole reason it has its own name: the same rule is enforced in two places, so
+ * naming it once keeps both places from wording the failure differently.
  */
 public class InvalidQuantityException extends InvalidRequestException {
 

@@ -3,9 +3,9 @@ package managestore.common.exception;
 /**
  * The requested login username is already registered to an account.
  *
- * <p>Unlike a failed <em>login</em>, which deliberately refuses to reveal whether a
- * username exists, account <em>creation</em> is admin-only and has to say so — an
- * admin cannot resolve the conflict without being told what it is.
+ * <p>A failed <em>login</em> deliberately hides whether a username exists, for
+ * security. But account <em>creation</em> is admin-only, so it has to say so. An
+ * admin cannot fix the conflict without being told what the conflict actually is.
  */
 public class DuplicateUsernameException extends InvalidRequestException {
 

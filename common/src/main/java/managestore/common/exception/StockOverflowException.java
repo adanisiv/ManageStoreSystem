@@ -3,11 +3,12 @@ package managestore.common.exception;
 /**
  * A restock would have pushed a product's on-hand count past {@link Integer#MAX_VALUE}.
  *
- * <p>Not reachable from the client UI, whose Restock spinner caps well below this — but
- * the wire protocol places no upper bound on what a client can send, and plain {@code int}
- * addition would wrap silently into a <em>negative</em> stock level rather than failing.
- * {@code Math.addExact} turns that into a real error, and this class gives it a name
- * saying what it actually was, instead of an "invalid argument" that reads like the
+ * <p>You cannot trigger this from the client UI, since its Restock spinner caps well
+ * below this limit. But the wire protocol itself has no upper bound on what a client
+ * can send. Plain {@code int} addition would silently wrap around into a
+ * <em>negative</em> stock level instead of failing. {@code Math.addExact} turns that
+ * into a real, catchable error. This class gives that error a name that says what
+ * actually happened, instead of a generic "invalid argument" that sounds like the
  * caller simply typed something wrong.
  */
 public class StockOverflowException extends InvalidRequestException {

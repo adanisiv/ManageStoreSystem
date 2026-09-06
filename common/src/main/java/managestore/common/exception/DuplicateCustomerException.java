@@ -3,10 +3,11 @@ package managestore.common.exception;
 /**
  * A customer with this personal ID is already registered in the chain.
  *
- * <p>A state conflict rather than bad input: the ID is perfectly valid, it is simply
- * taken. {@code CustomerDirectory} detects it through an atomic {@code putIfAbsent},
- * so two employees registering the same person at the same moment can never both
- * succeed — exactly one gets this exception.
+ * <p>This is a state conflict, not bad input — the ID itself is perfectly valid, it
+ * is just already taken. {@code CustomerDirectory} detects this with an atomic
+ * {@code putIfAbsent} call. That guarantees that if two employees try to register
+ * the same person at the same moment, only one of them can succeed. The other one
+ * gets this exception.
  */
 public class DuplicateCustomerException extends StoreStateException {
 

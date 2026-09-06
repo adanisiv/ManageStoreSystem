@@ -11,13 +11,13 @@ import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
 
 /**
- * A password entry field with an eye toggle that reveals the plaintext briefly, then hides it
- * again on its own — a persistent show/hide toggle would risk leaving a password sitting in
- * plain view on screen indefinitely if the user forgets to switch it back.
+ * A password entry field with an eye icon that briefly reveals the plain text, then hides it
+ * again by itself. We do this instead of a normal show/hide toggle because a toggle could be
+ * left in the "show" state by accident, leaving the password visible on screen indefinitely.
  *
- * <p>Implemented as a {@link PasswordField} and a plain {@link TextField} stacked in the same
- * spot with their text bound together, only one ever visible at a time — JavaFX has no built-in
- * "reveal" mode on PasswordField itself.
+ * <p>JavaFX has no built-in "reveal" mode on {@link PasswordField}, so we build one ourselves:
+ * a {@link PasswordField} and a plain {@link TextField} sit stacked in the same spot, with their
+ * text bound together, and only one of the two is ever visible at a time.
  */
 class PasswordRevealField {
 
@@ -30,18 +30,19 @@ class PasswordRevealField {
     private final PauseTransition hideAfterDelay = new PauseTransition(REVEAL_DURATION);
 
     PasswordRevealField() {
-        // Bidirectional binding keeps both fields' text in sync at all times, whichever
-        // one the user is actually typing into, so swapping which one is visible never
-        // loses or duplicates a keystroke.
+        // This two-way binding keeps both fields' text in sync at all times, no matter
+        // which one the user is actually typing into. So switching which one is visible
+        // never loses or duplicates a keystroke.
         plainField.textProperty().bindBidirectional(passwordField.textProperty());
-        // Start with the plain-text field hidden and excluded from layout — the masked
-        // PasswordField is what's shown by default.
+        // Start with the plain-text field hidden and skipped during layout. The masked
+        // PasswordField is the one shown by default.
         plainField.setManaged(false);
         plainField.setVisible(false);
-        // Both need an explicit unbounded max width, or the StackPane (and everything else here)
-        // only ever sizes to the fields' own preferred width instead of filling whatever room the
-        // surrounding layout actually gives it — the same "fillWidth" behavior a plain TextField
-        // gets for free when placed directly in a GridPane/HBox cell.
+        // Both fields need an explicit unbounded max width. Without it, the StackPane
+        // (and everything else here) only sizes itself to the fields' own preferred
+        // width, instead of filling whatever room the surrounding layout gives it.
+        // A plain TextField gets this "fill the available width" behavior for free
+        // when placed directly in a GridPane or HBox cell, but here we set it manually.
         passwordField.setMaxWidth(Double.MAX_VALUE);
         plainField.setMaxWidth(Double.MAX_VALUE);
 
@@ -51,8 +52,8 @@ class PasswordRevealField {
 
         toggleButton.getStyleClass().add("icon-toggle");
         toggleButton.setFocusTraversable(false);
-        // Clicking the eye icon toggles between showing and hiding the plaintext,
-        // based on whichever state we're currently in.
+        // Clicking the eye icon flips between showing and hiding the plain text,
+        // depending on which state we are currently in.
         toggleButton.setOnAction(e -> {
             if (plainField.isVisible()) {
                 hide();
@@ -60,8 +61,8 @@ class PasswordRevealField {
                 reveal();
             }
         });
-        // When the auto-hide timer (started in reveal()) elapses on its own, hide the
-        // password automatically — this is what stops it from staying visible forever.
+        // reveal() starts a timer below. When that timer runs out on its own, we hide
+        // the password automatically. This is what stops it from staying visible forever.
         hideAfterDelay.setOnFinished(e -> hide());
 
         root = new HBox(4, fieldStack, toggleButton);
@@ -74,19 +75,20 @@ class PasswordRevealField {
         passwordField.setManaged(false);
         plainField.setVisible(true);
         plainField.setManaged(true);
-        // Move keyboard focus to the now-visible field and put the caret at the end,
-        // so the user can keep typing right where they left off.
+        // Move keyboard focus to the now-visible field, and put the caret at the end
+        // of the text, so the user can keep typing right where they left off.
         plainField.requestFocus();
         plainField.positionCaret(plainField.getText().length());
         toggleButton.setText("🙈"); // "see-no-evil" — click to hide again
-        // (Re)start the countdown to auto-hide; playFromStart() resets it if the user
-        // clicked reveal again while a previous timer was still running.
+        // Start (or restart) the countdown to auto-hide. playFromStart() resets the
+        // timer if the user clicked reveal again while a previous timer was still running.
         hideAfterDelay.playFromStart();
     }
 
     private void hide() {
-        // Cancel any pending auto-hide timer — we're already hiding, no need for it to
-        // fire again later (e.g. if hide() was triggered manually, not by the timer).
+        // Cancel any pending auto-hide timer. We are already hiding the password, so
+        // there's no need for the timer to fire again later — this matters when hide()
+        // was triggered manually (by the click), not by the timer itself.
         hideAfterDelay.stop();
         // Swap back: hide the plain-text field, show the masked one again.
         plainField.setVisible(false);

@@ -1,14 +1,14 @@
 package managestore.common.exception;
 
 /**
- * A single named field failed validation — a blank full name, a personal ID whose
- * check digit does not add up, a phone in the wrong shape, a password that does not
- * meet the policy.
+ * A single named field failed validation. Examples: a blank full name, a personal ID
+ * whose check digit does not add up, a phone number in the wrong shape, a password
+ * that does not meet the policy.
  *
- * <p>The field name is a field on the exception, not just a prefix baked into the
- * message, because that is what lets a form do something better than show a popup:
- * it can put the error next to <em>the input that caused it</em>. The server still
- * validates everything itself regardless of what the UI checked first.
+ * <p>The field name is stored as its own field on the exception, not just stuck as a
+ * prefix in the message text. That is what lets a form do better than show a generic
+ * popup — it can put the error right next to <em>the input that caused it</em>. The
+ * server still validates everything itself, no matter what the UI already checked.
  */
 public class ValidationException extends InvalidRequestException {
 

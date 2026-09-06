@@ -11,12 +11,14 @@ import managestore.common.model.Employee;
 import managestore.common.model.Role;
 
 /**
- * The main app window after login: one tabbed window holding every screen
- * rather than several separate ones. Which employee is logged in (and their
- * role) is shown in the header and gates which tabs are visible — an admin
- * sees the System Log tab that other roles don't, but loses the Inventory
- * tab that every branch-assigned employee gets, since ADMIN is the one role
- * with no branch of its own to show stock for.
+ * The main app window shown after login. It is one tabbed window holding every
+ * screen, instead of several separate windows.
+ *
+ * <p>Which employee is logged in, and their role, is shown in the header. The role
+ * also decides which tabs are visible. For example, an admin sees the System Log
+ * tab that other roles don't. But an admin loses the Inventory tab that every
+ * branch-assigned employee gets, because ADMIN is the one role with no branch
+ * of its own, so there is no stock to show them.
  */
 public class MainWindow {
 
@@ -35,20 +37,20 @@ public class MainWindow {
         header.setMaxWidth(Double.MAX_VALUE);
 
         TabPane tabs = new TabPane();
-        // Inventory is always scoped to one branch (see ClientHandler.requireLoginAndBranch),
-        // and an employee with no branchId — currently only ADMIN — has no branch inventory to
-        // show. Without this check, that employee's Inventory tab would immediately fail its
-        // startup snapshot request and surface a "not assigned to a branch" error dialog on login.
+        // Inventory is always scoped to one branch (see ClientHandler.requireLoginAndBranch).
+        // An employee with no branchId — currently only ADMIN — has no branch inventory to show.
+        // Without this check, that employee's Inventory tab would immediately fail its startup
+        // snapshot request, and show a "not assigned to a branch" error dialog right on login.
         if (employee.getBranchId() != null) {
             tabs.getTabs().add(tab("📦 Inventory", new InventoryPanel(connection).build()));
         }
         tabs.getTabs().add(tab("👥 Customers", new CustomersPanel(connection).build()));
         tabs.getTabs().add(tab("📊 Reports", new ReportsPanel(connection).build()));
         tabs.getTabs().add(tab("💬 Chat", new ChatPanel(connection, employee).build()));
-        // The Employees tab itself is visible to every role; EmployeesPanel handles its
-        // own finer-grained, role-based visibility internally (add/delete are admin-only).
+        // The Employees tab itself is visible to every role. EmployeesPanel handles the
+        // finer-grained, role-based visibility internally (add and delete are admin-only).
         tabs.getTabs().add(tab("🧑‍💼 Employees", new EmployeesPanel(connection, employee).build()));
-        // The System Log tab, on the other hand, is hidden from the tab bar entirely
+        // The System Log tab, on the other hand, is left out of the tab bar entirely
         // unless the logged-in employee is an admin.
         if (employee.getRole() == Role.ADMIN) {
             tabs.getTabs().add(tab("📋 System Log", new LogsPanel(connection).build()));

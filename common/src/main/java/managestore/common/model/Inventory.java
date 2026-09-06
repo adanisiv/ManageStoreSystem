@@ -12,15 +12,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Stock of {@link Product}s for a single branch. This is the Subject side of
- * the Observer pattern: every {@link #addStock}/{@link #removeStock} call
- * notifies all registered {@link InventoryObserver}s with the product's new
- * quantity, which is how a sale or restock by one employee reaches every
- * other employee at the same branch live.
+ * Stock of {@link Product}s for a single branch.
  *
- * <p>Backed by a {@link ConcurrentHashMap} and a {@link CopyOnWriteArrayList}
- * of observers because, once the server is running, multiple client threads
- * can read/write the same branch's inventory concurrently.
+ * <p>This is the Subject side of the Observer pattern. Every {@link #addStock} or
+ * {@link #removeStock} call notifies all registered {@link InventoryObserver}s with
+ * the product's new quantity. That is how a sale or restock by one employee shows up
+ * live for every other employee at the same branch.
+ *
+ * <p>It uses a {@link ConcurrentHashMap} for the stock and a {@link CopyOnWriteArrayList}
+ * for the observers, because once the server is running, multiple client threads can
+ * read and write the same branch's inventory at the same time.
  */
 public class Inventory {
 
@@ -48,11 +49,11 @@ public class Inventory {
             // product has never been stocked at this branch).
             updated = Math.addExact(getQuantity(product), quantity);
         } catch (ArithmeticException e) {
-            // Plain int addition would silently wrap around to a negative "quantity" instead of
-            // failing — Math.addExact turns that into a real, catchable error. Not reachable
-            // through the client UI today (the Restock spinner caps at 1000), but the protocol
-            // itself places no upper bound on what a client sends, and this server should not
-            // trust that blindly.
+            // Plain int addition would silently overflow into a negative "quantity" instead of
+            // failing. Math.addExact turns that overflow into a real error we can catch instead.
+            // You cannot trigger this through the client UI today, since the Restock spinner
+            // caps at 1000. But the protocol itself has no upper limit on what a client can
+            // send, so the server should not blindly trust the input.
             throw new StockOverflowException(product.getSku(), quantity, e);
         }
         // Store the new total and push it out to every observer of this branch's inventory.

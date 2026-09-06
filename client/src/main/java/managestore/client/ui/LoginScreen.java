@@ -50,10 +50,10 @@ public class LoginScreen {
         grid.setAlignment(Pos.CENTER);
         grid.setHgap(12);
         grid.setVgap(12);
-        // Without explicit column constraints, GridPane is free to shrink the label column below
-        // its preferred width whenever the row column is under space pressure (e.g. the password
-        // row, once it holds the wider eye-toggle control) — the labels then render as "..." with
-        // no visible text at all, rather than just being a bit cramped.
+        // Without explicit column constraints, GridPane is free to shrink the label column
+        // below its preferred width whenever space is tight. This happens once the password
+        // row holds the wider eye-toggle control. When that happens, the labels render as
+        // "..." with no visible text at all, instead of just looking a bit cramped.
         ColumnConstraints labelColumn = new ColumnConstraints();
         labelColumn.setMinWidth(Region.USE_PREF_SIZE);
         labelColumn.setHalignment(HPos.RIGHT);
@@ -71,9 +71,10 @@ public class LoginScreen {
         grid.add(new Label("Password:"), 0, 3);
         grid.add(passwordField.getNode(), 1, 3);
 
-        // Reply to our own LOGIN_REQUEST: on success, hand off to the main window with
-        // the authenticated employee; on failure, re-enable the button and show why
-        // (wrong password, unknown user, etc.) so the user can try again.
+        // This is the reply to the LOGIN_REQUEST we send below. On success, we hand off
+        // to the main window with the now-authenticated employee. On failure, we re-enable
+        // the button and show why the login failed (wrong password, unknown user, and so on),
+        // so the user can try again.
         connection.on(MessageType.LOGIN_RESPONSE, message -> {
             LoginResponse response = message.readPayload(connection.getGson(), LoginResponse.class);
             if (response.isSuccess()) {
@@ -84,8 +85,9 @@ public class LoginScreen {
             }
         });
 
-        // "Log In" clicked: validate the form locally first (so obviously-bad input
-        // never even reaches the network), then open the connection and send the login request.
+        // When "Log In" is clicked, we first validate the form locally, so obviously-bad
+        // input never even reaches the network. Only then do we open the connection and
+        // send the login request.
         loginButton.setOnAction(e -> {
             statusLabel.setText("");
 
@@ -96,8 +98,8 @@ public class LoginScreen {
             }
             int port;
             try {
-                // Port must parse as a number; catching the exception here means the ugly
-                // NumberFormatException is turned into a friendly message.
+                // The port must parse as a number. We catch the exception here so the
+                // raw NumberFormatException becomes a friendly message instead.
                 port = Integer.parseInt(portField.getText().trim());
             } catch (NumberFormatException ex) {
                 statusLabel.setText("Port must be a number, e.g. " + defaultPort + ".");
@@ -111,21 +113,21 @@ public class LoginScreen {
             // Disable the button immediately so a slow/hanging connection attempt can't be
             // triggered twice by an impatient double-click.
             loginButton.setDisable(true);
-            // A retry after a failed attempt used to call connect() again without closing the
-            // previous socket/reader thread first — connect() always opens a brand-new one, so a
-            // failed-then-retried login left a stale connection and reader thread running, both
-            // now racing the new one on the same shared `channel` field for who reads the next
-            // response.
+            // connect() always opens a brand-new socket and reader thread. So before retrying,
+            // we must close any previous connection first. Otherwise, after a failed login and
+            // a retry, the old socket and reader thread would keep running alongside the new
+            // ones, and both would race to read the next response on the same shared
+            // `channel` field.
             connection.close();
             try {
-                // Open the socket and immediately send the login request; the response
+                // Open the socket and immediately send the login request. The response
                 // is handled by the listener registered just above.
                 connection.connect(hostField.getText().trim(), port);
                 connection.send(MessageType.LOGIN_REQUEST,
                         new LoginRequest(usernameField.getText().trim(), passwordField.getText()));
             } catch (IOException ex) {
-                // Connection itself failed (bad host/port, server not running, etc.) —
-                // re-enable the button so the user can correct the fields and try again.
+                // The connection itself failed (bad host or port, server not running, and so
+                // on). Re-enable the button so the user can fix the fields and try again.
                 loginButton.setDisable(false);
                 statusLabel.setText("Could not connect: " + ex.getMessage());
             }

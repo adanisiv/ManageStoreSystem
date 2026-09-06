@@ -13,13 +13,14 @@ public class ClientMain extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        // This is the one ServerConnection instance the whole client shares;
-        // it gets passed down into every screen that needs to talk to the server.
+        // This is the one ServerConnection instance the whole client shares.
+        // It gets passed down into every screen that needs to talk to the server.
         ServerConnection connection = new ServerConnection();
-        // Registered once, globally: every screen sends requests but none of them listen
-        // for MessageType.ERROR individually, so without this a rejected request (e.g.
-        // "insufficient stock", "only an admin can do that") would fail on the server and
-        // the user would just see nothing happen, with no explanation.
+        // We register this listener once, globally, instead of in each screen.
+        // No screen listens for MessageType.ERROR on its own. Without this listener,
+        // a rejected request (for example "insufficient stock" or "only an admin can
+        // do that") would fail on the server, and the user would see nothing happen,
+        // with no explanation of why.
         connection.on(MessageType.ERROR, message -> {
             // Deserialize the error payload the server sent back into an ErrorMessage object.
             ErrorMessage error = message.readPayload(connection.getGson(), ErrorMessage.class);
@@ -29,8 +30,8 @@ public class ClientMain extends Application {
             alert.setHeaderText(null);
             alert.showAndWait();
         });
-        // Kick off the app on the login screen; the connection is not opened yet —
-        // that happens once the user submits a host/port on that screen.
+        // Start the app on the login screen. The connection is not opened yet.
+        // It opens once the user submits a host and port on that screen.
         new LoginScreen(connection, NetworkDefaults.DEFAULT_PORT).show(primaryStage);
     }
 

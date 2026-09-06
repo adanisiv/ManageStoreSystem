@@ -30,9 +30,9 @@ public class CustomerDirectory {
     }
 
     public void add(Customer customer) {
-        // putIfAbsent only inserts when the key is not already present, and returns the
-        // existing value if it was — so a non-null return here means this personal ID
-        // was already registered, and the new customer was NOT inserted.
+        // putIfAbsent only inserts when the key is not already present. It returns the
+        // existing value if the key was already there. So a non-null return here means
+        // this personal ID was already registered, and the new customer was NOT added.
         if (customersByPersonalId.putIfAbsent(customer.getPersonalId(), customer) != null) {
             throw new DuplicateCustomerException(customer.getPersonalId());
         }

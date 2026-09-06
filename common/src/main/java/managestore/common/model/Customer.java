@@ -6,17 +6,17 @@ import managestore.common.exception.InvalidQuantityException;
 import java.util.Objects;
 
 /**
- * Base type for every customer in the network. Each concrete customer type
- * (see {@link NewCustomer}, {@link ReturningCustomer}, {@link VIPCustomer})
- * is its own class and overrides {@link #applyDiscount(double)} with its own
- * pricing rule — polymorphism over an if/else chain on a "type" field, so a
- * new customer tier is a new class rather than a new branch scattered across
- * the purchase logic.
+ * Base type for every customer in the network.
  *
- * <p>{@link #purchase} is a Template Method: the steps of a purchase (check
- * stock, compute total, apply the subclass-specific discount, decrement
- * inventory) are fixed here and identical for every customer type; only the
- * discount step varies per subclass.
+ * <p>Each customer tier is its own class: {@link NewCustomer}, {@link ReturningCustomer},
+ * and {@link VIPCustomer}. Each one overrides {@link #applyDiscount(double)} with its own
+ * pricing rule. This uses polymorphism instead of an if/else chain on a "type" field. So
+ * adding a new customer tier means adding a new class, not adding another branch to the
+ * purchase logic.
+ *
+ * <p>{@link #purchase} is a Template Method. The steps of a purchase are always the
+ * same: check stock, compute the total, apply the subclass's discount, then decrement
+ * inventory. Only the discount step changes between customer types.
  */
 public abstract class Customer {
 
@@ -60,10 +60,10 @@ public abstract class Customer {
     public abstract double applyDiscount(double amount);
 
     /**
-     * Executes a purchase against the given branch inventory: validates
-     * stock, computes the discounted price via this customer's own
-     * {@link #applyDiscount}, and decrements stock. Identical logic for
-     * every customer type — only applyDiscount differs per subclass.
+     * Runs a purchase against the given branch inventory. It checks stock, computes
+     * the discounted price using this customer's own {@link #applyDiscount}, and then
+     * decrements stock. This logic is the same for every customer type — only
+     * applyDiscount differs per subclass.
      */
     public final PurchaseResult purchase(Product product, int quantity, Inventory inventory) {
         // Step 1: reject a nonsensical purchase before touching any state.
@@ -78,7 +78,7 @@ public abstract class Customer {
         }
         // Step 4: compute the full price before any discount (unit price * quantity).
         double listTotal = product.getPrice() * quantity;
-        // Step 5: hand the pre-discount total to the subclass-specific hook; each
+        // Step 5: hand the pre-discount total to the subclass-specific hook. Each
         // concrete customer type (New/Returning/VIP) decides how much is actually charged.
         double charged = applyDiscount(listTotal);
         // Step 6: only after the price is settled, decrement the branch's stock.

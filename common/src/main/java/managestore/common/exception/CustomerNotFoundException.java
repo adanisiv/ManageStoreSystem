@@ -1,9 +1,11 @@
 package managestore.common.exception;
 
 /**
- * An update referred to a customer who is not in the directory — typically because
- * the record was removed between the moment a client's table was populated and the
- * moment it acted on a row.
+ * An update referred to a customer who is not in the directory.
+ *
+ * <p>This usually happens because the record was removed. For example, a client's
+ * table was loaded with a row, and by the time the client acted on that row, someone
+ * else had already deleted the customer.
  */
 public class CustomerNotFoundException extends StoreStateException {
 

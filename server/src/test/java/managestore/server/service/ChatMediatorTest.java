@@ -249,9 +249,61 @@ class ChatMediatorTest {
         RecordingChatEndpoint requesterZ = new RecordingChatEndpoint();
         mediator.register(employee("Z", "BRANCH-1", Role.SELLER), requesterZ);
 
-        mediator.requestDirectChat("Z", "ADMIN1"); // ADMIN1 is busy and branchless -> must not throw
+        // ADMIN1 is busy and has no branch. A queue is only ever drained by looking it up under a
+        // freed employee's own branch id, so filing this under a null key would put Z in a line
+        // that nothing can ever call — and Z's client would sit on "waiting in queue" forever.
+        boolean accepted = mediator.requestDirectChat("Z", "ADMIN1");
 
-        assertEquals(MessageType.CHAT_QUEUED, requesterZ.lastType());
+        assertFalse(accepted, "a callback to a branchless employee cannot be queued, so it must be refused");
+        assertTrue(requesterZ.types.isEmpty(), "Z must not be told it is queued when nothing can dequeue it");
+    }
+
+    @Test
+    void aRequestQueuedBeforeAnyoneIsOnlineIsDeliveredWhenTheyLogIn() {
+        // The queue is drained when an employee becomes free, and logging in is one of the two
+        // ways that happens (ending a chat is the other). Without this, a request made against a
+        // branch nobody had connected from yet would wait for an unrelated chat at that branch to
+        // start and then end — which, on a freshly started server, never happens.
+        ChatMediator empty = new ChatMediator();
+        RecordingChatEndpoint requester = new RecordingChatEndpoint();
+        empty.register(employee("A", "BRANCH-1", Role.SELLER), requester);
+
+        empty.requestChat("A", "BRANCH-2"); // nobody from BRANCH-2 is connected yet
+        assertEquals(MessageType.CHAT_QUEUED, requester.lastType());
+
+        RecordingChatEndpoint latecomer = new RecordingChatEndpoint();
+        empty.register(employee("B", "BRANCH-2", Role.SELLER), latecomer);
+
+        assertEquals(MessageType.CHAT_FREE_NOTICE, latecomer.lastType(),
+                "logging in should surface the request that was already waiting for this branch");
+        assertEquals("A", latecomer.lastPayload(ChatFreeNotice.class).getFromEmployeeNumber());
+    }
+
+    @Test
+    void askingAgainWhileQueuedReplacesTheRequestRatherThanDuplicatingIt() {
+        // The client leaves "Request Chat" enabled while queued so the user can switch branches
+        // instead of being stuck. Each new ask must therefore replace the previous one — two
+        // queued entries for the same person would fire two separate callback notices later.
+        ChatMediator empty = new ChatMediator();
+        RecordingChatEndpoint requester = new RecordingChatEndpoint();
+        empty.register(employee("A", "BRANCH-1", Role.SELLER), requester);
+
+        empty.requestChat("A", "BRANCH-2");
+        empty.requestChat("A", "BRANCH-2");
+        empty.requestChat("A", "BRANCH-2");
+
+        // Two people from BRANCH-2 come online. Each login drains one entry from that branch's
+        // queue, so this distinguishes "one entry" from "three": with duplicates left in the
+        // queue the second arrival would be told to call A back as well, for a request A only
+        // ever made once. Asserting on the first arrival alone would pass either way, since a
+        // single drain pops a single notice no matter how many duplicates are behind it.
+        RecordingChatEndpoint first = new RecordingChatEndpoint();
+        empty.register(employee("B", "BRANCH-2", Role.SELLER), first);
+        RecordingChatEndpoint second = new RecordingChatEndpoint();
+        empty.register(employee("C", "BRANCH-2", Role.CASHIER), second);
+
+        assertEquals(MessageType.CHAT_FREE_NOTICE, first.lastType(), "the first to arrive takes the request");
+        assertTrue(second.types.isEmpty(), "the queue must be empty by then — three asks left one entry, not three");
     }
 
     @Test

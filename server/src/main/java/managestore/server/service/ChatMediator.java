@@ -55,6 +55,11 @@ public class ChatMediator {
         // findFreeEmployeeAtBranch needs the former, send(...) needs the latter.
         connected.put(employee.getEmployeeNumber(), employee);
         endpoints.put(employee.getEmployeeNumber(), endpoint);
+        // Logging in is the other way an employee becomes available, alongside ending a chat.
+        // Without this, a request queued against a branch before anyone from it was online would
+        // sit in the queue until some unrelated chat at that branch happened to end — and the
+        // requester, whose client disables its Request button while queued, would be stuck.
+        notifyIfQueuedRequestWaiting(employee.getEmployeeNumber());
     }
 
     public synchronized void unregister(String employeeNumber) {
@@ -115,6 +120,10 @@ public class ChatMediator {
             // Nobody free at that branch: create the branch's queue on first use, then enqueue
             // this request so it can be picked up later (see notifyIfQueuedRequestWaiting) when
             // someone at that branch becomes free.
+            // Drop any request this employee already has waiting first, so asking again — for
+            // this branch or a different one — replaces their place in line rather than leaving
+            // duplicates that would each fire a separate callback notice later.
+            removePendingRequestsFrom(fromEmployeeNumber);
             pendingByBranch.computeIfAbsent(targetBranchId, id -> new LinkedBlockingQueue<>())
                     .offer(new ChatRequest(fromEmployeeNumber, targetBranchId));
             // Let the requester know they're waiting rather than leaving them guessing.
@@ -132,7 +141,8 @@ public class ChatMediator {
      * the same way {@link #joinChat} tells "already in this one" apart from "busy elsewhere".
      *
      * @return true if accepted (matched, queued, or already talking to exactly this person).
-     *     False if {@code fromEmployeeNumber} is busy in a genuinely different session.
+     *     False if {@code fromEmployeeNumber} is busy in a genuinely different session, or if
+     *     the target can't be queued for — see the branch check below.
      */
     public synchronized boolean requestDirectChat(String fromEmployeeNumber, String targetEmployeeNumber) {
         // If the requester is already in a session, this is only ever acceptable when that
@@ -147,16 +157,23 @@ public class ChatMediator {
         // not busy themselves — otherwise fall through to queueing.
         if (connected.containsKey(targetEmployeeNumber) && !isBusy(targetEmployeeNumber)) {
             startSession(fromEmployeeNumber, targetEmployeeNumber);
-        } else {
-            // Target is offline or busy: queue the request under the target's branch (or null
-            // if the target isn't connected at all/has no branch) so it surfaces the next time
-            // someone at that branch frees up, same mechanism as the branch-wide requestChat.
-            Employee target = connected.get(targetEmployeeNumber);
-            String branchId = target != null ? target.getBranchId() : null;
-            pendingByBranch.computeIfAbsent(branchId, id -> new LinkedBlockingQueue<>())
-                    .offer(new ChatRequest(fromEmployeeNumber, branchId));
-            send(fromEmployeeNumber, MessageType.CHAT_QUEUED, new ChatQueuedNotice(branchId));
+            return true;
         }
+        // Target is connected but busy: queue under their branch, so the request surfaces the
+        // next time anyone at that branch frees up — the same mechanism as branch-wide requests.
+        Employee target = connected.get(targetEmployeeNumber);
+        String branchId = target != null ? target.getBranchId() : null;
+        // A queue is only ever drained by notifyIfQueuedRequestWaiting, which looks it up by a
+        // freed employee's own branch id — so anything filed under a null key is unreachable and
+        // would strand the requester forever. That happens when the target has since disconnected
+        // (nothing to call back) or has no branch at all, as ADMIN doesn't. Refuse instead, so the
+        // caller reports a real failure rather than a wait that can never end.
+        if (branchId == null) {
+            return false;
+        }
+        pendingByBranch.computeIfAbsent(branchId, id -> new LinkedBlockingQueue<>())
+                .offer(new ChatRequest(fromEmployeeNumber, branchId));
+        send(fromEmployeeNumber, MessageType.CHAT_QUEUED, new ChatQueuedNotice(branchId));
         return true;
     }
 

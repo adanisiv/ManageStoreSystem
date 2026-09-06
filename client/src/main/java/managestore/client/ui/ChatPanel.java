@@ -108,24 +108,34 @@ public class ChatPanel {
         // Server says no one was free to chat right now, so this request is waiting in line.
         connection.on(MessageType.CHAT_QUEUED, message -> {
             ChatQueuedNotice notice = message.readPayload(connection.getGson(), ChatQueuedNotice.class);
-            statusLabel.setText("Nobody free at " + notice.getTargetBranchId() + " right now — waiting in queue.");
+            statusLabel.setText("Nobody free at " + notice.getTargetBranchId()
+                    + " right now — waiting in queue. You can pick another branch and ask again.");
             statusLabel.setGraphic(null);
-            // Disabled the moment we're queued (not just once matched): otherwise clicking
-            // "Request Chat" again while already queued would submit a second, independent queue
-            // entry for the same person instead of just waiting on the first one.
-            requestButton.setDisable(true);
+            // Deliberately left enabled. Being queued can last indefinitely — until somebody at
+            // that branch frees up or logs in — and disabling the only way out would strand the
+            // user with no way to retry or switch branches short of restarting the client.
+            // Asking again is safe: ChatMediator.requestChat drops this employee's previous
+            // pending request before enqueuing the new one, so there is never a duplicate.
+            requestButton.setDisable(false);
         });
 
         // Server says a chat session has actually begun: remember the session id (needed
         // to send/end messages), reset the transcript, and flip the buttons into "in a chat" mode.
         connection.on(MessageType.CHAT_STARTED, message -> {
             ChatStartedNotice notice = message.readPayload(connection.getGson(), ChatStartedNotice.class);
+            // The server re-broadcasts CHAT_STARTED to everyone when a shift manager joins, so
+            // that the roster in the status line updates. That is the same session continuing,
+            // not a new one — clearing the transcript on it would wipe the conversation the
+            // existing participants are in the middle of, right off their screens.
+            boolean sameSessionContinuing = notice.getSessionId().equals(activeSessionId);
             activeSessionId = notice.getSessionId();
             statusLabel.setText("Chat active with: " + String.join(", ", notice.getParticipantEmployeeNumbers()));
             // A "Call back X" button from an earlier CHAT_FREE_NOTICE would otherwise keep showing
             // (and stay clickable) even after that exact callback already connected.
             statusLabel.setGraphic(null);
-            transcript.clear();
+            if (!sameSessionContinuing) {
+                transcript.clear();
+            }
             sendButton.setDisable(false);
             endButton.setDisable(false);
             requestButton.setDisable(true);

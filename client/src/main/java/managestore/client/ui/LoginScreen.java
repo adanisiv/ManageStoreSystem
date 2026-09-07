@@ -26,10 +26,17 @@ public class LoginScreen {
 
     private final ServerConnection connection;
     private final int defaultPort;
+    private final Runnable onLogout;
 
-    public LoginScreen(ServerConnection connection, int defaultPort) {
+    /**
+     * @param onLogout passed straight through to {@link MainWindow} once login succeeds — see
+     *                  its constructor for why logging out doesn't just show a new LoginScreen
+     *                  on this same connection.
+     */
+    public LoginScreen(ServerConnection connection, int defaultPort, Runnable onLogout) {
         this.connection = connection;
         this.defaultPort = defaultPort;
+        this.onLogout = onLogout;
     }
 
     public void show(Stage stage) {
@@ -78,7 +85,7 @@ public class LoginScreen {
         connection.on(MessageType.LOGIN_RESPONSE, message -> {
             LoginResponse response = message.readPayload(connection.getGson(), LoginResponse.class);
             if (response.isSuccess()) {
-                new MainWindow(connection, response.getEmployee()).show(stage);
+                new MainWindow(connection, response.getEmployee(), onLogout).show(stage);
             } else {
                 loginButton.setDisable(false);
                 statusLabel.setText(response.getErrorMessage());

@@ -1,14 +1,20 @@
 package managestore.client.ui;
 
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.stage.Stage;
 import managestore.client.net.ServerConnection;
 import managestore.common.model.Employee;
 import managestore.common.model.Role;
+import managestore.common.protocol.MessageType;
 
 /**
  * The main app window shown after login. It is one tabbed window holding every
@@ -24,16 +30,53 @@ public class MainWindow {
 
     private final ServerConnection connection;
     private final Employee employee;
+    private final Runnable onLogout;
 
-    public MainWindow(ServerConnection connection, Employee employee) {
+    /**
+     * @param onLogout called after this window has told the server to log out and closed its
+     *                  connection. The caller is responsible for what "log back in" means next —
+     *                  see {@code ClientMain}, which shows a fresh login screen backed by a brand
+     *                  new connection, rather than reusing this one.
+     */
+    public MainWindow(ServerConnection connection, Employee employee, Runnable onLogout) {
         this.connection = connection;
         this.employee = employee;
+        this.onLogout = onLogout;
     }
 
     public void show(Stage stage) {
-        Label header = new Label(employee.getFullName() + "  •  " + employee.getRole()
+        Label identityLabel = new Label(employee.getFullName() + "  •  " + employee.getRole()
                 + (employee.getBranchId() != null ? "  •  Branch " + employee.getBranchId() : ""));
+        // #header-bar (below) is now an HBox, not a Label, and -fx-text-fill/-fx-font-* from
+        // that rule don't cascade down to this label automatically -- so it needs its own copy
+        // of the same look the whole bar used to have when it was just this one label.
+        identityLabel.setStyle("-fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold;");
+
+        Button logoutButton = new Button("Log Out");
+        logoutButton.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-text-fill: white;");
+        // Tell the server we're done first (releases the single-session slot right away, and
+        // unregisters this connection from every observer it's subscribed to), then close our
+        // side. We deliberately do NOT reuse this connection or this stage's listeners for the
+        // next login: onLogout hands control back to ClientMain, which builds a brand new
+        // ServerConnection for the fresh login screen. Every panel in this window (Inventory,
+        // Reports, Chat, ...) registered its own listeners on this connection when it was built;
+        // without a clean break, logging in again on the same connection would pile a second
+        // full set of listeners on top of the first, and every future push from the server would
+        // fire both sets.
+        logoutButton.setOnAction(e -> {
+            connection.send(MessageType.LOGOUT, null);
+            connection.close();
+            onLogout.run();
+        });
+
+        // A spacer that grows to fill the space between the identity label and the button,
+        // pushing Log Out to the right edge of the header instead of sitting right next to the name.
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox header = new HBox(12, identityLabel, spacer, logoutButton);
         header.setId("header-bar");
+        header.setAlignment(Pos.CENTER_LEFT);
         header.setMaxWidth(Double.MAX_VALUE);
 
         TabPane tabs = new TabPane();

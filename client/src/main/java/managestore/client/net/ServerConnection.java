@@ -96,6 +96,21 @@ public class ServerConnection {
         } catch (IOException ignored) {
             // closing on the way out; nothing useful to do with this
         }
+        // Wait for the reader thread to actually finish before this method returns, instead of
+        // just asking it to stop and moving on. Closing the channel only triggers the shutdown;
+        // the thread still needs a moment to notice the IOException and exit its loop. Without
+        // this join, a caller that reconnects right after close() (LoginScreen does, on a retry)
+        // could end up with the old reader thread and the new one both alive for a brief window.
+        // A short timeout keeps this from blocking forever if the thread is somehow stuck.
+        if (readerThread != null) {
+            try {
+                readerThread.join(2000);
+            } catch (InterruptedException e) {
+                // We were interrupted while waiting. Restore that signal for whoever called us,
+                // and move on rather than waiting any longer -- close() should not hang.
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private void readLoop() {

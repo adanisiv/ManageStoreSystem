@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,6 +24,15 @@ import java.util.logging.Logger;
 public class ServerMain {
 
     private static final Logger LOG = Logger.getLogger(ServerMain.class.getName());
+
+    // Caps how many clients can be connected to this server at the same time. The thread pool in
+    // main() below has no limit of its own -- newCachedThreadPool() grows without bound -- so
+    // without this, a client (or a bug, or someone probing the server) that opens far more
+    // connections than a real store chain ever would could exhaust the server's threads and file
+    // handles. A Semaphore is the standard tool for capping how many callers can hold a limited
+    // resource at once: each connection acquires one of a fixed number of permits when it's
+    // accepted, and releases it back when that client disconnects.
+    private static final int MAX_CONCURRENT_CLIENTS = 50;
 
     public static void main(String[] args) throws IOException {
         // Use a port passed on the command line if given, otherwise fall back to the default port.
@@ -60,16 +70,47 @@ public class ServerMain {
         return serverSocket;
     }
 
-    /** Blocks, accepting connections and handing each to its own {@link ClientHandler} thread, until the socket is closed. */
+    /** Same as {@link #acceptLoop(ServerSocket, ServerContext, ExecutorService, int)}, using the default connection limit. */
     public static void acceptLoop(ServerSocket serverSocket, ServerContext context, ExecutorService clientPool) {
+        acceptLoop(serverSocket, context, clientPool, MAX_CONCURRENT_CLIENTS);
+    }
+
+    /**
+     * Blocks, accepting connections and handing each to its own {@link ClientHandler} thread,
+     * until the socket is closed. Never lets more than {@code maxConcurrentClients} clients be
+     * connected at once — see {@link #MAX_CONCURRENT_CLIENTS} for why.
+     *
+     * <p>A permit is acquired here, on the accept thread, right after a connection comes in. If
+     * the server is already at the limit, {@code acquire()} blocks, which in turn stops this loop
+     * from calling {@code accept()} again — so once at capacity, further incoming connections
+     * simply wait in the operating system's own connection queue instead of each spawning an
+     * unbounded new thread. The permit is released once that client's handler finishes, whether
+     * it disconnected normally or the connection failed.
+     */
+    public static void acceptLoop(ServerSocket serverSocket, ServerContext context, ExecutorService clientPool,
+                                   int maxConcurrentClients) {
+        Semaphore connectionSlots = new Semaphore(maxConcurrentClients);
         // Keep accepting new connections until someone closes the server socket (e.g. on shutdown).
         while (!serverSocket.isClosed()) {
             try {
                 // Blocks here until a client connects.
                 Socket clientSocket = serverSocket.accept();
-                // Each client gets its own ClientHandler (implements Runnable), run on a pooled thread,
-                // so one client's blocking reads never hold up any other client.
-                clientPool.submit(new ClientHandler(clientSocket, context));
+                // Blocks here too, but only once every permit is already taken by a connected
+                // client -- see the javadoc above for what that means for new connections.
+                connectionSlots.acquire();
+                ClientHandler handler = new ClientHandler(clientSocket, context);
+                // Each client gets its own ClientHandler (implements Runnable), run on a pooled
+                // thread, so one client's blocking reads never hold up any other client. The
+                // permit is released here, once the handler's run() method returns -- that only
+                // happens when the client disconnects -- regardless of whether it ended normally
+                // or by throwing, so a permit can never be leaked and never released twice.
+                clientPool.submit(() -> {
+                    try {
+                        handler.run();
+                    } finally {
+                        connectionSlots.release();
+                    }
+                });
             } catch (IOException e) {
                 // If the socket was closed while we were blocked in accept(), that's a normal shutdown,
                 // not an error — just return instead of logging and looping again.
@@ -78,6 +119,13 @@ public class ServerMain {
                 }
                 // Otherwise this is an unexpected accept failure; log it and keep serving other clients.
                 LOG.log(Level.WARNING, "Failed to accept connection", e);
+            } catch (InterruptedException e) {
+                // We were interrupted while waiting for a free connection slot. That happens when
+                // the server is shutting down, since clientPool.shutdownNow() interrupts pooled
+                // threads and a caller can interrupt this accept thread the same way. Restore the
+                // interrupt flag for whoever called us to see, and stop accepting new connections.
+                Thread.currentThread().interrupt();
+                return;
             }
         }
     }

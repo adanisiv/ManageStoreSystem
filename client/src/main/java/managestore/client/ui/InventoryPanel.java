@@ -12,17 +12,22 @@ import javafx.scene.control.Spinner;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import managestore.client.net.ServerConnection;
+import managestore.common.model.Employee;
+import managestore.common.model.Role;
 import managestore.common.protocol.CustomerDto;
 import managestore.common.protocol.CustomerListResponse;
 import managestore.common.protocol.CustomerUpdateNotice;
 import managestore.common.protocol.InventorySnapshotResponse;
 import managestore.common.protocol.InventoryUpdateNotice;
 import managestore.common.protocol.MessageType;
+import managestore.common.protocol.ProductAddRequest;
+import managestore.common.protocol.ProductAddResponse;
 import managestore.common.protocol.PurchaseRequest;
 import managestore.common.protocol.PurchaseResponse;
 import managestore.common.protocol.RestockRequest;
@@ -57,13 +62,15 @@ public class InventoryPanel {
     private static final PseudoClass LOW_STOCK = PseudoClass.getPseudoClass("low-stock");
 
     private final ServerConnection connection;
+    private final Employee employee;
     private final Map<String, StockEntry> bySku = new LinkedHashMap<>();
     private final ObservableList<StockEntry> rows = FXCollections.observableArrayList();
     private final Map<String, CustomerDto> customersById = new LinkedHashMap<>();
     private final ObservableList<CustomerDto> customerRows = FXCollections.observableArrayList();
 
-    public InventoryPanel(ServerConnection connection) {
+    public InventoryPanel(ServerConnection connection, Employee employee) {
         this.connection = connection;
+        this.employee = employee;
     }
 
     public BorderPane build() {
@@ -139,6 +146,67 @@ public class InventoryPanel {
         sellBar.setPadding(new Insets(8));
         statusLabel.getStyleClass().add("status-label");
 
+        // Adding a product to the catalog, as opposed to restocking one that's already in it.
+        // Restock can only top up a SKU this branch already carries (its dropdown is built from
+        // the branch's own stock), so this is the only way a new SKU ever enters the system
+        // while the server is running.
+        TextField newSkuField = new TextField();
+        newSkuField.setPromptText("SKU");
+        newSkuField.setPrefWidth(110);
+        TextField newNameField = new TextField();
+        newNameField.setPromptText("Name");
+        newNameField.setPrefWidth(140);
+        TextField newCategoryField = new TextField();
+        newCategoryField.setPromptText("Category");
+        newCategoryField.setPrefWidth(110);
+        TextField newPriceField = new TextField();
+        newPriceField.setPromptText("Price");
+        newPriceField.setPrefWidth(80);
+        Spinner<Integer> openingStockSpinner = new Spinner<>(1, 1000, 1);
+        openingStockSpinner.setPrefWidth(90);
+        Button addProductButton = new Button("➕ Add Product");
+
+        addProductButton.setOnAction(e -> {
+            // The price is the only free-text numeric field on this screen, so it's the only
+            // one that can fail to parse. We catch that here and say so plainly, rather than
+            // sending a malformed request the server would just bounce back.
+            double price;
+            try {
+                price = Double.parseDouble(newPriceField.getText().trim());
+            } catch (NumberFormatException ex) {
+                UiUtil.setStatus(statusLabel, false, "Price must be a number, e.g. 49.90");
+                return;
+            }
+            // Same double-click guard as Sell and Restock: PRODUCT_ADD_RESPONSE re-enables it.
+            addProductButton.setDisable(true);
+            connection.send(MessageType.PRODUCT_ADD_REQUEST, new ProductAddRequest(
+                    newSkuField.getText().trim(), newNameField.getText().trim(),
+                    newCategoryField.getText().trim(), price, openingStockSpinner.getValue()));
+        });
+
+        HBox addProductBar = new HBox(8,
+                new Label("New product:"), newSkuField, newNameField, newCategoryField, newPriceField,
+                new Label("Opening stock:"), openingStockSpinner, addProductButton);
+        addProductBar.getStyleClass().add("toolbar");
+        addProductBar.setPadding(new Insets(8));
+
+        // The reply to our own PRODUCT_ADD_REQUEST. The new row itself arrives separately, via
+        // the INVENTORY_UPDATE push the server's addStock triggers — the same path that shows
+        // it to every other employee at this branch — so there's nothing to add to the table here.
+        connection.on(MessageType.PRODUCT_ADD_RESPONSE, message -> {
+            ProductAddResponse response = message.readPayload(connection.getGson(), ProductAddResponse.class);
+            UiUtil.setStatus(statusLabel, response.isSuccess(), response.isSuccess()
+                    ? "Product added."
+                    : "Could not add product: " + response.getErrorMessage());
+            if (response.isSuccess()) {
+                newSkuField.clear();
+                newNameField.clear();
+                newCategoryField.clear();
+                newPriceField.clear();
+            }
+            addProductButton.setDisable(false);
+        });
+
         // The first full load of inventory (we send the request once, below).
         // This is the only listener that clears the bySku map and rebuilds it from
         // scratch. It then pushes the result into the table and dropdown using the
@@ -207,9 +275,18 @@ public class InventoryPanel {
         connection.send(MessageType.INVENTORY_SNAPSHOT_REQUEST, new Object());
         connection.send(MessageType.CUSTOMER_LIST_REQUEST, new Object());
 
+        VBox bottom = new VBox(sellBar);
+        // Mirrors the server's own gate in handleProductAddRequest: only a shift manager may
+        // add a product, so nobody else is shown a form whose request would just be refused.
+        // The server still enforces it regardless of what this client chooses to display.
+        if (employee.getRole() == Role.SHIFT_MANAGER) {
+            bottom.getChildren().add(addProductBar);
+        }
+        bottom.getChildren().add(statusLabel);
+
         BorderPane pane = new BorderPane();
         pane.setCenter(table);
-        pane.setBottom(new VBox(sellBar, statusLabel));
+        pane.setBottom(bottom);
         return pane;
     }
 

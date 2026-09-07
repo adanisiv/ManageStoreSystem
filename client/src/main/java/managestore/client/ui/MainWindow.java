@@ -85,7 +85,7 @@ public class MainWindow {
         // Without this check, that employee's Inventory tab would immediately fail its startup
         // snapshot request, and show a "not assigned to a branch" error dialog right on login.
         if (employee.getBranchId() != null) {
-            tabs.getTabs().add(tab("📦 Inventory", new InventoryPanel(connection).build()));
+            tabs.getTabs().add(tab("📦 Inventory", new InventoryPanel(connection, employee).build()));
         }
         tabs.getTabs().add(tab("👥 Customers", new CustomersPanel(connection).build()));
         tabs.getTabs().add(tab("📊 Reports", new ReportsPanel(connection).build()));

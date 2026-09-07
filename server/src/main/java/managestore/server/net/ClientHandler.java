@@ -1,6 +1,7 @@
 package managestore.server.net;
 
 import managestore.common.exception.DuplicateEmployeeException;
+import managestore.common.exception.DuplicateProductException;
 import managestore.common.exception.ValidationException;
 
 import managestore.common.model.Branch;
@@ -42,6 +43,8 @@ import managestore.common.protocol.LoginResponse;
 import managestore.common.protocol.Message;
 import managestore.common.protocol.MessageChannel;
 import managestore.common.protocol.MessageType;
+import managestore.common.protocol.ProductAddRequest;
+import managestore.common.protocol.ProductAddResponse;
 import managestore.common.protocol.PurchaseRequest;
 import managestore.common.protocol.PurchaseResponse;
 import managestore.common.protocol.ReportRequest;
@@ -180,6 +183,9 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 break;
             case RESTOCK_REQUEST:
                 handleRestockRequest(message);
+                break;
+            case PRODUCT_ADD_REQUEST:
+                handleProductAddRequest(message);
                 break;
             case CUSTOMER_LIST_REQUEST:
                 handleCustomerListRequest();
@@ -392,6 +398,62 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             // back to this client the same way the lookup failures above are.
             channel.send(Message.of(context.getGson(), MessageType.PURCHASE_RESPONSE,
                     PurchaseResponse.failure(e.getMessage())));
+        }
+    }
+
+    /**
+     * Shift-manager-only: introduces a brand-new product into the chain-wide catalog and
+     * gives it an opening quantity at this employee's own branch.
+     *
+     * <p>Restocking can only ever top up a SKU the catalog already knows, so without this
+     * there was no way at all to sell something the server wasn't seeded with at startup.
+     *
+     * <p>Why SHIFT_MANAGER and not ADMIN, which is who adds employees: an ADMIN has no branch
+     * (see {@code requireLoginAndBranch}), and the client hides the whole Inventory tab from
+     * anyone without one — so an admin-gated version of this could never actually be reached.
+     * A shift manager is the most senior role that does have a branch to stock.
+     */
+    private void handleProductAddRequest(Message message) {
+        if (!requireLoginAndBranch()) {
+            return;
+        }
+        if (!requireCurrentRole(Role.SHIFT_MANAGER).isPresent()) {
+            channel.send(Message.of(context.getGson(), MessageType.PRODUCT_ADD_RESPONSE,
+                    ProductAddResponse.failure("Only a shift manager can add products")));
+            return;
+        }
+        ProductAddRequest request = message.readPayload(context.getGson(), ProductAddRequest.class);
+        try {
+            requireValid(request.getSku(), "SKU");
+            requireValid(request.getName(), "Product name");
+            requireValid(request.getCategory(), "Category");
+            if (request.getPrice() <= 0) {
+                throw new ValidationException("Price", "Price must be greater than 0");
+            }
+            String sku = request.getSku().trim();
+            // The catalog is a keyed map, so adding an existing SKU would silently replace that
+            // product's name and price. Every branch's Inventory keys its stock by the Product
+            // object itself, and those maps would still hold the old instance — leaving one SKU
+            // reporting two different products depending on which map you read.
+            if (context.getStoreChain().getProduct(sku) != null) {
+                throw new DuplicateProductException(sku);
+            }
+            Product product = new Product(sku, request.getName().trim(), request.getCategory().trim(), request.getPrice());
+            context.getStoreChain().addProduct(product);
+            // Stocking it here is what makes it visible: Inventory only holds an entry for a
+            // product once stock exists for it, and addStock's observer push is what puts the
+            // new row on every other connected client at this branch, live. addStock also
+            // rejects a non-positive quantity, so that validation isn't repeated here.
+            subscribedBranch.getInventory().addStock(product, request.getInitialQuantity());
+            LogManager.getInstance().log(new LogEvent(LogType.PRODUCT_ADDED, loggedInEmployee.getEmployeeNumber(),
+                    "Added product " + product.getSku() + " (" + product.getName() + ") with opening stock "
+                            + request.getInitialQuantity() + " at " + subscribedBranch.getId()));
+            channel.send(Message.of(context.getGson(), MessageType.PRODUCT_ADD_RESPONSE, ProductAddResponse.success()));
+        } catch (IllegalArgumentException e) {
+            // Covers the field validation above, DuplicateProductException, and the
+            // InvalidQuantityException addStock throws for a non-positive opening quantity.
+            channel.send(Message.of(context.getGson(), MessageType.PRODUCT_ADD_RESPONSE,
+                    ProductAddResponse.failure(e.getMessage())));
         }
     }
 

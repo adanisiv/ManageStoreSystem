@@ -1,5 +1,7 @@
 package managestore.client.ui;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.control.Alert;
@@ -38,8 +40,13 @@ import java.util.Base64;
  */
 public class ReportsPanel {
 
+    // Pretty-printed, purely for the file this writes to disk -- separate from
+    // connection.getGson(), which stays compact for the wire protocol.
+    private static final Gson PRETTY_GSON = new GsonBuilder().setPrettyPrinting().create();
+
     private final ServerConnection connection;
     private byte[] pendingWordFile;
+    private ReportResponse pendingJsonResponse;
 
     public ReportsPanel(ServerConnection connection) {
         this.connection = connection;
@@ -62,6 +69,9 @@ public class ReportsPanel {
         Button saveWordButton = new Button("Save as Word...");
         saveWordButton.setDisable(true);
         saveWordButton.getStyleClass().add("secondary");
+        Button saveJsonButton = new Button("Save as JSON...");
+        saveJsonButton.setDisable(true);
+        saveJsonButton.getStyleClass().add("secondary");
         Label titleLabel = new Label();
         titleLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
         Label totalsLabel = new Label();
@@ -76,7 +86,8 @@ public class ReportsPanel {
         // or the app was broken.
         table.setPlaceholder(new Label("No sales match this filter."));
 
-        HBox controls = new HBox(8, scopeChoice, filterField, dayPicker, formatChoice, generateButton, saveWordButton);
+        HBox controls = new HBox(8, scopeChoice, filterField, dayPicker, formatChoice, generateButton,
+                saveWordButton, saveJsonButton);
         controls.getStyleClass().add("toolbar");
         controls.setPadding(new Insets(8));
 
@@ -87,7 +98,9 @@ public class ReportsPanel {
         // that a scope-specific match might treat differently.
         generateButton.setOnAction(e -> {
             saveWordButton.setDisable(true);
+            saveJsonButton.setDisable(true);
             pendingWordFile = null;
+            pendingJsonResponse = null;
             String filterValue = filterField.getText().trim().isEmpty() ? null : filterField.getText().trim();
             String day = dayPicker.getValue() != null ? dayPicker.getValue().toString() : null;
             connection.send(MessageType.REPORT_REQUEST,
@@ -115,11 +128,35 @@ public class ReportsPanel {
             }
         });
 
+        // "Save as JSON..." clicked. Unlike Word, the server never builds a JSON file of
+        // its own -- the report's data is already JSON-shaped (it travels that way on
+        // the wire for every format), so there's nothing to ask the server for here.
+        // We just re-serialize the same ReportResponse we already have, pretty-printed,
+        // straight to the file the user picks.
+        saveJsonButton.setOnAction(e -> {
+            if (pendingJsonResponse == null) {
+                return;
+            }
+            FileChooser chooser = new FileChooser();
+            chooser.setInitialFileName("report.json");
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON File", "*.json"));
+            java.io.File file = chooser.showSaveDialog(saveJsonButton.getScene().getWindow());
+            if (file != null) {
+                try {
+                    Files.write(file.toPath(), PRETTY_GSON.toJson(pendingJsonResponse).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                } catch (IOException ex) {
+                    new Alert(Alert.AlertType.ERROR, "Could not save file: " + ex.getMessage()).showAndWait();
+                }
+            }
+        });
+
         // This is the reply to our own REPORT_REQUEST. Every time, it fills in the
         // title, table rows, and totals from the JSON part of the response.
         // If the request asked for WORD format, the response also carries the .docx
         // file as Base64 text. We decode it once here and keep the raw bytes around,
         // so "Save as Word" can write them out later without asking the server again.
+        // If the request asked for JSON format instead, we keep the whole response
+        // object around the same way, so "Save as JSON" can write it out on demand.
         connection.on(MessageType.REPORT_RESPONSE, message -> {
             ReportResponse response = message.readPayload(connection.getGson(), ReportResponse.class);
             titleLabel.setText(response.getTitle());
@@ -129,6 +166,9 @@ public class ReportsPanel {
             if (response.getWordFileBase64() != null) {
                 pendingWordFile = Base64.getDecoder().decode(response.getWordFileBase64());
                 saveWordButton.setDisable(false);
+            } else if (response.getFormat() == ReportFormat.JSON) {
+                pendingJsonResponse = response;
+                saveJsonButton.setDisable(false);
             }
         });
 

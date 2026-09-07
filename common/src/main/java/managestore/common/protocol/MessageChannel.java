@@ -55,9 +55,23 @@ public class MessageChannel implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        reader.close();
-        writer.close();
+        // Close the socket FIRST, not the reader. BufferedReader.close() and
+        // BufferedReader.readLine() both synchronize on the same internal lock. If another
+        // thread is blocked inside readLine() waiting for the next message (the normal state
+        // of the reader thread, most of the time), it is holding that lock for as long as the
+        // blocking read takes -- which, with nothing more to read, is forever. Calling
+        // reader.close() from this thread would then block forever too, waiting for a lock
+        // that will never be released: a deadlock between this thread and the reader thread.
+        // Closing the socket instead makes the reader thread's in-progress read fail with an
+        // IOException right away, which is exactly what unblocks it and lets it release that
+        // lock -- so by the time we get to reader.close() below, the lock is free.
         socket.close();
+        try {
+            reader.close();
+        } catch (IOException ignored) {
+            // The socket is already closed; closing the reader is just cleanup at this point.
+        }
+        writer.close();
     }
 
     /** Wire shape: {"type": "...", "payload": {...}}. */

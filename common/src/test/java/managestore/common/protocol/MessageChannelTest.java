@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import managestore.common.model.Employee;
 import managestore.common.model.Role;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -15,6 +16,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -70,5 +72,62 @@ class MessageChannelTest {
     private static MessageChannel openWhenReady(Socket socket, int port, Gson gson) throws IOException {
         socket.connect(new InetSocketAddress("localhost", port), 2000);
         return new MessageChannel(socket, gson);
+    }
+
+    /**
+     * Reproduces the exact deadlock a client hits when it tries to log in a second time
+     * (a retry after a failed attempt, for example): one thread is parked inside
+     * {@code receive()} -- {@code BufferedReader.readLine()} -- waiting for the next
+     * message that never comes, while another thread calls {@code close()} at the same
+     * time. {@code BufferedReader.close()} and {@code readLine()} synchronize on the same
+     * internal lock, and {@code readLine()} holds it for the whole time it's blocked
+     * reading, so closing the reader before the socket used to make {@code close()} wait
+     * forever for a lock the blocked read would never release.
+     */
+    @Test
+    @Timeout(5)
+    void closingWhileAnotherThreadIsBlockedInReceiveDoesNotDeadlock() throws Exception {
+        Gson gson = new Gson();
+
+        try (ServerSocket serverSocket = new ServerSocket()) {
+            serverSocket.bind(new InetSocketAddress("localhost", 0));
+            int port = serverSocket.getLocalPort();
+
+            // A server side that accepts the connection and then never sends anything --
+            // exactly what a real client sees between messages, and exactly what makes
+            // receive() block.
+            Thread acceptThread = new Thread(() -> {
+                try (Socket ignored = serverSocket.accept()) {
+                    Thread.sleep(10_000);
+                } catch (IOException | InterruptedException ignored) {
+                    // test is tearing down
+                }
+            });
+            acceptThread.setDaemon(true);
+            acceptThread.start();
+
+            Socket clientSocket = new Socket();
+            MessageChannel channel = openWhenReady(clientSocket, port, gson);
+
+            Thread receiverThread = new Thread(() -> {
+                try {
+                    channel.receive();
+                } catch (IOException expected) {
+                    // Exactly what should happen once close() runs below.
+                }
+            }, "test-reader");
+            receiverThread.start();
+
+            // Give the receiver thread time to actually enter the blocking read, so this
+            // test exercises the real race instead of closing before receive() even starts.
+            Thread.sleep(300);
+
+            // Before the fix, this line would hang forever (caught here by @Timeout(5)).
+            channel.close();
+
+            receiverThread.join(2000);
+            assertFalse(receiverThread.isAlive(),
+                    "the blocked reader thread should have been released by close()");
+        }
     }
 }

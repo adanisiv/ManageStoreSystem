@@ -1,5 +1,6 @@
 package managestore.server.service;
 
+import managestore.common.exception.DuplicateEmployeeException;
 import managestore.common.exception.DuplicateUsernameException;
 import managestore.common.exception.ValidationException;
 
@@ -56,25 +57,38 @@ public class AuthService {
         return LoginResponse.success(employee.get());
     }
 
-    /** Used by the Admin screen to provision a new employee's login. */
+    /**
+     * Used by the Admin screen to provision a new employee's login.
+     *
+     * <p>Two different things must each be unique here: the employee number, and the
+     * username. Both used to be checked with a separate find-then-save — for example
+     * {@code if (accountRepository.findByUsername(username).isPresent()) throw ...} followed
+     * later by {@code accountRepository.save(...)}. Two of these calls for the same new
+     * username, on two different ClientHandler threads, could each pass that check before
+     * either one saved: both would see "free", and the second save would silently overwrite
+     * the first's account instead of being refused. saveIfAbsent/saveIfUsernameAbsent below
+     * make the check and the write one atomic step, so that interleaving can't happen.
+     */
     public void createAccount(Employee employee, String username, String rawPassword) {
         // Reject weak passwords before touching either repository.
         String policyViolation = passwordPolicy.validate(rawPassword);
         if (policyViolation != null) {
             throw new ValidationException("Password", policyViolation);
         }
-        // Usernames must be unique across all accounts.
-        if (accountRepository.findByUsername(username).isPresent()) {
-            throw new DuplicateUsernameException(username);
+        // Claim the employee number first. If it's taken, nothing has been written yet.
+        if (!employeeRepository.saveIfAbsent(employee)) {
+            throw new DuplicateEmployeeException(employee.getEmployeeNumber());
         }
         // Generate a fresh random salt and hash the raw password with it — the plaintext
         // password itself is never persisted anywhere.
         String salt = PasswordHasher.newSalt();
         String hash = PasswordHasher.hash(rawPassword, salt);
-        // Persist the employee profile first, then the account that links a username/password
-        // to that employee's number.
-        employeeRepository.save(employee);
-        accountRepository.save(new Account(employee.getEmployeeNumber(), username, hash, salt));
+        // Now claim the username. If it's taken, undo the employee save above rather than
+        // leaving an employee record with no login account attached to it.
+        if (!accountRepository.saveIfUsernameAbsent(new Account(employee.getEmployeeNumber(), username, hash, salt))) {
+            employeeRepository.delete(employee.getEmployeeNumber());
+            throw new DuplicateUsernameException(username);
+        }
     }
 
     /**

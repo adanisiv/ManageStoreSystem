@@ -39,8 +39,22 @@ public class StoreChain {
     public void addProduct(Product product) {
         // Catalog entries are keyed by SKU. The same product (price, name,
         // category) is shared by every branch. Only the stock quantity is
-        // specific to a branch.
+        // specific to a branch. Used only by trusted, sequential startup seeding
+        // (DemoServerLauncher) -- addProductIfAbsent below is what a live request must use.
         productCatalog.put(product.getSku(), product);
+    }
+
+    /**
+     * Adds the product only if no product with this SKU is already in the catalog — the check
+     * and the write happen as one atomic map operation, not two separate calls a concurrent
+     * PRODUCT_ADD_REQUEST could interleave with. Without that, two requests for the same new
+     * SKU could each see "not present" before either writes, and the second add would silently
+     * overwrite the first — exactly the corruption the SKU-uniqueness check exists to prevent.
+     *
+     * @return true if added; false if a product with that SKU already existed (nothing changed).
+     */
+    public boolean addProductIfAbsent(Product product) {
+        return productCatalog.putIfAbsent(product.getSku(), product) == null;
     }
 
     public Product getProduct(String sku) {

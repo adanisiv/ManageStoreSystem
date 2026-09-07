@@ -1,6 +1,5 @@
 package managestore.server.net;
 
-import managestore.common.exception.DuplicateEmployeeException;
 import managestore.common.exception.DuplicateProductException;
 import managestore.common.exception.ValidationException;
 
@@ -431,15 +430,16 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 throw new ValidationException("Price", "Price must be greater than 0");
             }
             String sku = request.getSku().trim();
-            // The catalog is a keyed map, so adding an existing SKU would silently replace that
-            // product's name and price. Every branch's Inventory keys its stock by the Product
-            // object itself, and those maps would still hold the old instance — leaving one SKU
-            // reporting two different products depending on which map you read.
-            if (context.getStoreChain().getProduct(sku) != null) {
+            Product product = new Product(sku, request.getName().trim(), request.getCategory().trim(), request.getPrice());
+            // addProductIfAbsent checks and writes as one atomic step (see its javadoc for why
+            // a separate getProduct(sku)-then-addProduct check would race). The catalog is a
+            // keyed map, so an unguarded add of an existing SKU would silently replace that
+            // product's name and price, while every branch's Inventory -- keyed by the Product
+            // object itself -- would still hold the old instance: one SKU reporting two
+            // different products depending on which map you read.
+            if (!context.getStoreChain().addProductIfAbsent(product)) {
                 throw new DuplicateProductException(sku);
             }
-            Product product = new Product(sku, request.getName().trim(), request.getCategory().trim(), request.getPrice());
-            context.getStoreChain().addProduct(product);
             // Stocking it here is what makes it visible: Inventory only holds an entry for a
             // product once stock exists for it, and addStock's observer push is what puts the
             // new row on every other connected client at this branch, live. addStock also
@@ -599,18 +599,13 @@ public class ClientHandler implements Runnable, ChatEndpoint {
             requireValidAccountNumber(request.getAccountNumber());
             requireValid(request.getBranchId(), "Branch");
             requireValid(request.getUsername(), "Username");
-            // AuthService.createAccount already rejects a taken username. But nothing was
-            // checking the employee number itself. Re-adding an existing employee number would
-            // silently overwrite that employee's profile, because JsonFileEmployeeRepository.save
-            // is a keyed upsert — it replaces whatever was already saved under that key. Meanwhile
-            // a second, unrelated account could still end up pointing at that same employee number.
-            if (context.getEmployeeRepository().findByEmployeeNumber(request.getEmployeeNumber()).isPresent()) {
-                throw new DuplicateEmployeeException(request.getEmployeeNumber());
-            }
             Role role = Role.valueOf(request.getRole());
             Employee employee = new Employee(request.getEmployeeNumber(), request.getFullName(), request.getPersonalId(),
                     request.getPhone(), request.getAccountNumber(), request.getBranchId(), role);
             // Creates the Employee record together with its login Account (username/password).
+            // createAccount itself rejects both a taken employee number and a taken username,
+            // each as one atomic check-and-save — see its javadoc for why that has to happen
+            // there and not as a separate find-then-save check here first.
             context.getAuthService().createAccount(employee, request.getUsername(), request.getPassword());
 
             // Also attach the new employee to their branch's roster, if the branch id resolves.

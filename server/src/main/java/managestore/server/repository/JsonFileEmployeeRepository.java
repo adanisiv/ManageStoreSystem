@@ -133,6 +133,22 @@ public class JsonFileEmployeeRepository implements EmployeeRepository {
     }
 
     @Override
+    public synchronized boolean saveIfAbsent(Employee employee) {
+        // The whole method is synchronized on this repository instance, so the "does this
+        // number already exist" check and the write below happen as one atomic step. Two
+        // concurrent EMPLOYEE_ADD_REQUESTs for the same new employee number are each on their
+        // own ClientHandler thread; without this lock spanning both the check and the write,
+        // both could see "not present" before either writes, and the second save would silently
+        // overwrite the first instead of being refused.
+        if (byEmployeeNumber.containsKey(employee.getEmployeeNumber())) {
+            return false;
+        }
+        byEmployeeNumber.put(employee.getEmployeeNumber(), employee);
+        persist();
+        return true;
+    }
+
+    @Override
     public synchronized void delete(String employeeNumber) {
         // remove() gives back the value it removed, or null if that key was not there.
         // Only rewrite the file on disk if something was actually removed.

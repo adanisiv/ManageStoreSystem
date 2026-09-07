@@ -115,6 +115,21 @@ public class JsonFileAccountRepository implements AccountRepository {
     }
 
     @Override
+    public synchronized boolean saveIfUsernameAbsent(Account account) {
+        // Synchronized so the "is this username taken" check and the write are one atomic
+        // step. AuthService.createAccount used to check findByUsername(...).isPresent() and
+        // only save() afterward -- two separate calls a second concurrent createAccount for
+        // the same username could land in between, so both would see "free" and the second
+        // save would silently overwrite the first instead of being refused.
+        if (byUsername.containsKey(account.getUsername())) {
+            return false;
+        }
+        byUsername.put(account.getUsername(), account);
+        persist();
+        return true;
+    }
+
+    @Override
     public synchronized void deleteByEmployeeNumber(String employeeNumber) {
         // Accounts are keyed by username, not employee number. So first scan
         // all accounts to find the one that belongs to this employee, and

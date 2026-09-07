@@ -85,6 +85,18 @@ class ChatMediatorTest {
     }
 
     @Test
+    void requestDirectChatToOneselfIsRefusedRatherThanCreatingADegenerateSession() {
+        // Reachable from the client's "chat with a specific employee" field: typing your own
+        // employee number. Without a guard, this would pass every other check (A is connected
+        // and not busy) and call startSession("A", "A"), adding "A" to the participant list
+        // twice and leaving a "session" with no one else actually in it.
+        assertFalse(mediator.requestDirectChat("A", "A"), "a request targeting yourself must be refused");
+
+        assertFalse(mediator.isBusy("A"));
+        assertTrue(sellerA.types.isEmpty(), "a refused self-request must not start any session");
+    }
+
+    @Test
     void requestDirectChatRefusesARequesterBusyWithSomeoneElse() {
         assertTrue(mediator.requestChat("A", "BRANCH-2")); // A <-> B
         RecordingChatEndpoint requesterD = new RecordingChatEndpoint();

@@ -7,6 +7,7 @@ import managestore.common.model.StoreChain;
 import managestore.common.protocol.ChatMessageDto;
 import managestore.common.protocol.ChatRequestDto;
 import managestore.common.protocol.ChatStartedNotice;
+import managestore.common.protocol.ErrorMessage;
 import managestore.common.protocol.LoginRequest;
 import managestore.common.protocol.LoginResponse;
 import managestore.common.protocol.Message;
@@ -25,6 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -84,6 +86,42 @@ class ChatIntegrationTest {
                     new ChatMessageDto(noticeOnA.getSessionId(), "CB", "hi back from B")));
             ChatMessageDto messageOnA = channelA.receive().readPayload(gson, ChatMessageDto.class);
             assertEquals("hi back from B", messageOnA.getText());
+        } finally {
+            serverSocket.close();
+            clientPool.shutdownNow();
+        }
+    }
+
+    @Test
+    void directChatRequestToAnUnreachableEmployeeGetsAnAccurateErrorNotTheBusyMessage() throws Exception {
+        // Reachable from the client's "chat with a specific employee" field: typing an employee
+        // number nobody is currently connected under (a typo, or someone who's since logged
+        // out). chatEmpA is not busy at all here, so the generic "you're already in an active
+        // chat" message the ERROR used to always send would be actively wrong, not just vague.
+        StoreChain storeChain = new StoreChain();
+        InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
+        InMemoryEmployeeRepository employeeRepository = new InMemoryEmployeeRepository();
+        AuthService authService = new AuthService(accountRepository, employeeRepository);
+        authService.createAccount(
+                new Employee("CA", "Chat Employee A", "1", "050-1", "ACC-1", "BRANCH-A", Role.SELLER),
+                "chatEmpA", "secret123");
+
+        ServerContext context = new ServerContext(storeChain, authService, employeeRepository, gson);
+        ServerSocket serverSocket = ServerMain.bind(0);
+        int port = serverSocket.getLocalPort();
+        ExecutorService clientPool = Executors.newCachedThreadPool();
+        Thread serverThread = new Thread(() -> ServerMain.acceptLoop(serverSocket, context, clientPool));
+        serverThread.setDaemon(true);
+        serverThread.start();
+
+        try (MessageChannel channelA = loginAs(port, "chatEmpA")) {
+            channelA.send(Message.of(gson, MessageType.CHAT_REQUEST, new ChatRequestDto(null, "NOBODY")));
+
+            Message response = channelA.receive();
+            assertEquals(MessageType.ERROR, response.getType());
+            ErrorMessage error = response.readPayload(gson, ErrorMessage.class);
+            assertFalse(error.getMessage().contains("already in an active chat"),
+                    "chatEmpA isn't busy at all -- the error must not claim they are: " + error.getMessage());
         } finally {
             serverSocket.close();
             clientPool.shutdownNow();

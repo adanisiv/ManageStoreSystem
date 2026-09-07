@@ -148,10 +148,19 @@ public class ChatMediator {
      *
      * @return true if the call went through: it matched immediately, it was queued, or the
      *     employee was already talking to exactly this person. False if the employee is busy
-     *     in a genuinely different session, or if the target can't be queued for (see the
-     *     branch check below).
+     *     in a genuinely different session, if the target can't be queued for (see the branch
+     *     check below), or if the target is the requester themselves.
      */
     public synchronized boolean requestDirectChat(String fromEmployeeNumber, String targetEmployeeNumber) {
+        // Reachable from the client's "chat with a specific employee" field: typing your own
+        // employee number, by mistake or otherwise. Every check below would actually let this
+        // through — the requester is connected and, ordinarily, not busy — and startSession
+        // would then add the same employee number to the session's participant list twice,
+        // producing a session with no one else in it. The branch-wide requestChat can't hit
+        // this: findFreeEmployeeAtBranch already excludes the requester from its own search.
+        if (fromEmployeeNumber.equals(targetEmployeeNumber)) {
+            return false;
+        }
         // If the requester is already in a session, we only allow this call when that session
         // is the exact one shared with the target — checked by reference, not just "some
         // session". That is the harmless "call back the person you're already talking to"

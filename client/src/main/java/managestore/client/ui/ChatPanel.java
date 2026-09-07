@@ -71,6 +71,10 @@ public class ChatPanel {
         sendButton.setDisable(true);
         endButton.setDisable(true);
 
+        TextField directTargetField = new TextField();
+        directTargetField.setPromptText("Employee # (see the Employees tab)");
+        Button directRequestButton = new Button("Chat with This Employee");
+
         TextField joinTargetField = new TextField();
         joinTargetField.setPromptText("Employee # to join their chat");
         Button joinButton = new Button("Join as Shift Manager");
@@ -83,6 +87,18 @@ public class ChatPanel {
             BranchDto target = targetBranchChoice.getValue();
             if (target != null) {
                 connection.send(MessageType.CHAT_REQUEST, new ChatRequestDto(target.getId()));
+            }
+        });
+
+        // "Chat with This Employee" clicked: request a specific person by employee number,
+        // instead of "anyone free at a branch". ChatRequestDto already supports this — it's
+        // the same request the auto-generated "Call back" button below sends after a
+        // CHAT_FREE_NOTICE — this just lets an employee start that kind of request themselves,
+        // instead of only being able to react to one.
+        directRequestButton.setOnAction(e -> {
+            String targetEmployeeNumber = directTargetField.getText().trim();
+            if (!targetEmployeeNumber.isEmpty()) {
+                connection.send(MessageType.CHAT_REQUEST, new ChatRequestDto(null, targetEmployeeNumber));
             }
         });
 
@@ -148,6 +164,7 @@ public class ChatPanel {
             sendButton.setDisable(false);
             endButton.setDisable(false);
             requestButton.setDisable(true);
+            directRequestButton.setDisable(true);
         });
 
         // Someone tried to reach this employee while they were busy elsewhere.
@@ -178,6 +195,7 @@ public class ChatPanel {
             sendButton.setDisable(true);
             endButton.setDisable(true);
             requestButton.setDisable(false);
+            directRequestButton.setDisable(false);
         });
 
         endButton.getStyleClass().add("secondary");
@@ -185,11 +203,14 @@ public class ChatPanel {
         HBox requestBar = new HBox(8, new Label("Chat with a free employee at:"), targetBranchChoice, requestButton, statusLabel);
         requestBar.getStyleClass().add("toolbar");
         requestBar.setPadding(new Insets(8));
+        HBox directRequestBar = new HBox(8, new Label("Or chat with a specific employee:"), directTargetField, directRequestButton);
+        directRequestBar.getStyleClass().add("toolbar");
+        directRequestBar.setPadding(new Insets(8));
         HBox sendBar = new HBox(8, messageField, sendButton, endButton);
         sendBar.getStyleClass().add("toolbar");
         sendBar.setPadding(new Insets(8));
 
-        VBox top = new VBox(8, requestBar);
+        VBox top = new VBox(8, requestBar, directRequestBar);
         // The "join another employee's chat" bar is only shown to shift managers.
         // Regular employees don't get the option to insert themselves into someone else's session.
         if (employee.getRole() == Role.SHIFT_MANAGER) {

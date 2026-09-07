@@ -732,7 +732,16 @@ public class ClientHandler implements Runnable, ChatEndpoint {
                 ? context.getChatMediator().requestDirectChat(myNumber, request.getTargetEmployeeNumber())
                 : context.getChatMediator().requestChat(myNumber, request.getTargetBranchId());
         if (!accepted) {
-            sendError("You're already in an active chat — end it before starting another.");
+            // requestChat only ever refuses for one reason (the requester is already busy), so
+            // that's always the right message for it. requestDirectChat can refuse for other
+            // reasons too — the target typed in doesn't exist, isn't connected, or has no branch
+            // to queue under — where "you're already in an active chat" would be actively
+            // wrong: the requester isn't busy at all, the target just isn't reachable.
+            boolean requesterIsTheProblem = request.getTargetEmployeeNumber() == null
+                    || context.getChatMediator().isBusy(myNumber);
+            sendError(requesterIsTheProblem
+                    ? "You're already in an active chat — end it before starting another."
+                    : "That employee isn't available to chat right now — check the employee number and try again.");
         }
     }
 

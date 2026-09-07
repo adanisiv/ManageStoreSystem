@@ -1,0 +1,13 @@
+ManageStoreSystem - Store Chain Management System
+Java Course Final Project
+
+SUBMITTED BY
+------------------------------------------------------------
+Name                       ID Number
+------------------------------------------------------------
+Sivan Adani                211777198
+Gilad Raskind              318467743
+Tom Salmon                 206493694
+Adi Zalesky                323134239
+Omer Kuri                  212550107
+------------------------------------------------------------
